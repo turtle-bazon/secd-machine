@@ -31,6 +31,11 @@ PICO_BUILD_DIR ?= build-rp2040-pico
 PICO_BUILD_DIR_RELEASE = build-rp2040-pico-release
 PICO_BOARD ?= pico
 
+# Board features (peripherals linked into the firmware), comma-separated.
+# The board's enabled capabilities; e.g. a bare chip target would build
+# with SECD_FEATURES= (no GPIO/UART drivers linked).
+SECD_FEATURES ?= gpio,uart
+
 # secd-lisp (CL build that provides the version for .machine metadata)
 SECD_LISP_DIR ?= ../secd-lisp
 SECD_LISP_ASD = $(SECD_LISP_DIR)/secd-lisp.asd
@@ -59,7 +64,8 @@ machines: $(TARGETS)
 machine: machines
 
 # Generate target metadata with the CL build version injected
-$(OUTPUT_DIR)/%.metadata.json: targets/%.json
+# (board file in targets/boards/; its chip base is merged in by secd-lisp)
+$(OUTPUT_DIR)/%.metadata.json: targets/boards/%.json
 	@mkdir -p $(OUTPUT_DIR)
 	@echo "Generating metadata for $< (version from secd-lisp build)..."
 	@sbcl --non-interactive --load $(SECD_LISP_ASD) \
@@ -116,7 +122,8 @@ define RP2040-CMAKE
 		-DCMAKE_TOOLCHAIN_FILE=$(PICO_SDK_PATH)/cmake/preload/toolchains/pico_arm_cortex_m0plus_gcc.cmake \
 		-DPICO_SDK_PATH=$(PICO_SDK_PATH) \
 		-DPICO_BOARD=$(PICO_BOARD) \
-		-DSECD_DEBUG_BUILD=$(2)
+		-DSECD_DEBUG_BUILD=$(2) \
+		-DSECD_FEATURES=$(SECD_FEATURES)
 	@cmake --build $(1) -- -j$$(nproc)
 endef
 
@@ -138,7 +145,7 @@ $(OUTPUT_DIR)/esp32-devkit.machine: $(OUTPUT_DIR)/esp32-devkit.uf2 $(OUTPUT_DIR)
 		zf.close()"
 	@echo "Created $@"
 
-$(OUTPUT_DIR)/esp32-devkit.uf2: targets/esp32-devkit.json
+$(OUTPUT_DIR)/esp32-devkit.uf2: targets/boards/esp32-devkit.json
 	@mkdir -p $(OUTPUT_DIR)
 	@python3 -c "import struct, json; \
 		m = json.load(open('$<')); \
@@ -158,7 +165,7 @@ $(OUTPUT_DIR)/atmega328p-uno.machine: $(OUTPUT_DIR)/atmega328p-uno.uf2 $(OUTPUT_
 		zf.close()"
 	@echo "Created $@"
 
-$(OUTPUT_DIR)/atmega328p-uno.uf2: targets/atmega328p-uno.json
+$(OUTPUT_DIR)/atmega328p-uno.uf2: targets/boards/atmega328p-uno.json
 	@mkdir -p $(OUTPUT_DIR)
 	@python3 -c "import struct, json; \
 		m = json.load(open('$<')); \

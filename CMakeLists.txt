@@ -41,6 +41,16 @@ else()
     message(STATUS "SECD firmware: RELEASE (no serial, start immediately)")
 endif()
 
+# Board features (peripherals linked into the firmware), comma-separated.
+# The chip HAL offers capabilities; the board selects which are enabled here.
+# E.g. a bare chip board builds with -DSECD_FEATURES= to omit GPIO/UART code.
+set(SECD_FEATURES "gpio,uart" CACHE STRING
+    "Board features to enable (comma-separated): gpio,uart,...")
+message(STATUS "SECD features: ${SECD_FEATURES}")
+
+# CMake lists use ';' separators; the cache value is comma-separated
+string(REPLACE "," ";" _SECD_FEATURES "${SECD_FEATURES}")
+
 # Initialize pico-sdk
 pico_sdk_init()
 
@@ -60,6 +70,17 @@ set(SOURCES
 add_executable(secd-machine ${SOURCES})
 target_compile_definitions(secd-machine PRIVATE SECD_DEBUG_BUILD=$<BOOL:${SECD_DEBUG_BUILD}>)
 
+# Enable per-feature defines and collect peripheral libraries
+foreach(_f ${_SECD_FEATURES})
+    string(TOUPPER "${_f}" _F)
+    target_compile_definitions(secd-machine PRIVATE SECD_FEATURE_${_F}=1)
+    if("${_f}" STREQUAL "gpio")
+        list(APPEND SECD_FEATURE_LIBS hardware_gpio)
+    elseif("${_f}" STREQUAL "uart")
+        list(APPEND SECD_FEATURE_LIBS hardware_uart)
+    endif()
+endforeach()
+
 # Include directories
 target_include_directories(secd-machine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -69,8 +90,7 @@ target_include_directories(secd-machine PRIVATE
 # Link libraries
 target_link_libraries(secd-machine
     pico_stdlib
-    hardware_uart
-    hardware_gpio
+    ${SECD_FEATURE_LIBS}
     hardware_flash
     hardware_timer
     pico_time

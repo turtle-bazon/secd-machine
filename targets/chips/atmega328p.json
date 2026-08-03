@@ -1,0 +1,27 @@
+{
+    "chip": "atmega328p",
+    "description": "Microchip ATmega328P 8-bit AVR microcontroller",
+    "output": {
+        "format": "bin"
+    },
+    "memory": {
+        "flash_size": 32768,
+        "sram_size": 2048
+    },
+    "constraints": {
+        "max_fixnum": 32767,
+        "min_fixnum": -32768,
+        "bignum_support": false,
+        "max_string_length": 64,
+        "max_list_depth": 16
+    },
+    "capabilities": [
+        "gpio",
+        "uart",
+        "spi",
+        "i2c",
+        "adc",
+        "pwm",
+        "timer"
+    ]
+}

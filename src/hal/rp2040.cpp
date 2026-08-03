@@ -22,8 +22,20 @@
 
 /* Pico SDK includes */
 #include "pico/stdlib.h"
+/* Board feature gates (default off unless the build system enables them) */
+#ifndef SECD_FEATURE_GPIO
+#define SECD_FEATURE_GPIO 0
+#endif
+#ifndef SECD_FEATURE_UART
+#define SECD_FEATURE_UART 0
+#endif
+/* Peripheral headers are only pulled in when the board feature is enabled */
+#if SECD_FEATURE_GPIO
 #include "hardware/gpio.h"
+#endif
+#if SECD_FEATURE_UART
 #include "hardware/uart.h"
+#endif
 #include "hardware/flash.h"
 #include "hardware/timer.h"
 #include "hardware/watchdog.h"
@@ -72,7 +84,8 @@ void hal_delay(uint32_t ms) {
     sleep_ms(ms);
 }
 
-/* GPIO */
+/* GPIO (board feature) */
+#if SECD_FEATURE_GPIO
 int hal_gpio_init(uint8_t pin, uint8_t mode) {
     if (pin >= 30) return -1;
     gpio_init(pin);
@@ -94,8 +107,10 @@ int hal_gpio_read(uint8_t pin) {
     if (pin >= 30) return 0;
     return gpio_get(pin) ? 1 : 0;
 }
+#endif
 
-/* UART/Serial */
+/* UART/Serial (board feature) */
+#if SECD_FEATURE_UART
 void hal_serial_init(uint32_t baud) {
     uart_init(uart0, baud);
     gpio_set_function(0, GPIO_FUNC_UART);
@@ -117,6 +132,7 @@ uint8_t hal_serial_read(void) {
 int hal_serial_available(void) {
     return uart_is_readable(uart0) ? 1 : 0;
 }
+#endif
 
 /* String output */
 void hal_print(const char *str) {

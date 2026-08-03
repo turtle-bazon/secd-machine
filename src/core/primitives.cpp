@@ -194,11 +194,20 @@ secd_value_t prim_atom(secd_heap_t *heap, secd_value_t args) {
 }
 
 /*
- * HAL primitives (RP2040 target).
- * Registration order MUST match the "primitives" table in
- * targets/rp2040-pico.json so ids line up.
+ * HAL primitives (board features).
+ * Registration order MUST match the "primitives" table in the board
+ * metadata so ids line up.
  */
 
+/* Board feature gates (default off unless the build system enables them) */
+#ifndef SECD_FEATURE_GPIO
+#define SECD_FEATURE_GPIO 0
+#endif
+#ifndef SECD_FEATURE_UART
+#define SECD_FEATURE_UART 0
+#endif
+
+#if SECD_FEATURE_GPIO
 secd_value_t prim_gpio_init(secd_heap_t *heap, secd_value_t args) {
     uint8_t pin = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
     uint8_t mode = (uint8_t)secd_fixnum_value(get_arg2(heap, args));
@@ -215,7 +224,9 @@ secd_value_t prim_gpio_read(secd_heap_t *heap, secd_value_t args) {
     uint8_t pin = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
     return secd_make_fixnum(hal_gpio_read(pin));
 }
+#endif
 
+#if SECD_FEATURE_UART
 secd_value_t prim_uart_init(secd_heap_t *heap, secd_value_t args) {
     uint32_t baud = (uint32_t)secd_fixnum_value(get_arg1(heap, args));
     hal_serial_init(baud);
@@ -233,6 +244,7 @@ secd_value_t prim_uart_read(secd_heap_t *heap, secd_value_t args) {
     (void)args;
     return secd_make_fixnum(hal_serial_read());
 }
+#endif
 
 secd_value_t prim_sleep(secd_heap_t *heap, secd_value_t args) {
     uint32_t ms = (uint32_t)secd_fixnum_value(get_arg1(heap, args));
@@ -285,13 +297,17 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
     secd_register_prim(registry, "pair?", prim_pair);
     secd_register_prim(registry, "atom?", prim_atom);
     
-    /* HAL primitives (ids 14-23, order matches target metadata) */
+    /* HAL primitives (board features) */
+#if SECD_FEATURE_GPIO
     secd_register_prim(registry, "gpio-init", prim_gpio_init);
     secd_register_prim(registry, "gpio-write", prim_gpio_write);
     secd_register_prim(registry, "gpio-read", prim_gpio_read);
+#endif
+#if SECD_FEATURE_UART
     secd_register_prim(registry, "uart-init", prim_uart_init);
     secd_register_prim(registry, "uart-write", prim_uart_write);
     secd_register_prim(registry, "uart-read", prim_uart_read);
+#endif
     secd_register_prim(registry, "sleep", prim_sleep);
     secd_register_prim(registry, "millis", prim_millis);
     secd_register_prim(registry, "adc-read", prim_adc_read);

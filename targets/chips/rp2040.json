@@ -1,0 +1,28 @@
+{
+    "chip": "rp2040",
+    "description": "RP2040 dual-core ARM Cortex-M0+ microcontroller",
+    "output": {
+        "format": "uf2",
+        "family": "rp2040"
+    },
+    "memory": {
+        "flash_size": 2097152,
+        "sram_size": 270336
+    },
+    "constraints": {
+        "max_fixnum": 32767,
+        "min_fixnum": -32768,
+        "bignum_support": false,
+        "max_string_length": 256,
+        "max_list_depth": 64
+    },
+    "capabilities": [
+        "gpio",
+        "uart",
+        "spi",
+        "i2c",
+        "adc",
+        "pwm",
+        "timer"
+    ]
+}

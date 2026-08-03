@@ -3,40 +3,24 @@
     "chip": "esp32",
     "board": "ESP32 DevKit",
     "description": "Espressif ESP32 DevKit",
-    "version": "0.1.0",
-    
-    "output": {
-        "format": "uf2",
-        "family": "esp32"
-    },
-    
     "memory": {
         "heap_size": 400000,
         "stack_size": 32000,
-        "symbols_size": 512,
-        "flash_size": 4194304,
-        "sram_size": 532480
+        "symbols_size": 512
     },
-    
     "flash_layout": {
         "firmware_addr": 0,
         "firmware_size": 1572864,
         "bytecode_addr": 1572864,
         "bytecode_size": 1048576
     },
-    
     "features": [
-        "has-gpio",
-        "has-uart",
-        "has-spi",
-        "has-i2c",
-        "has-adc",
-        "has-pwm",
-        "has-wifi",
-        "has-ble",
-        "has-timer"
+        "gpio",
+        "uart",
+        "sleep",
+        "millis",
+        "wifi"
     ],
-    
     "primitives": {
         "gpio-init": {"id": 128, "args": 2},
         "gpio-write": {"id": 129, "args": 2},
@@ -51,13 +35,5 @@
         "wifi-connect": {"id": 138, "args": 2},
         "wifi-disconnect": {"id": 139, "args": 0},
         "http-get": {"id": 140, "args": 1}
-    },
-    
-    "constraints": {
-        "max_fixnum": 2147483647,
-        "min_fixnum": -2147483648,
-        "bignum_support": true,
-        "max_string_length": 1024,
-        "max_list_depth": 128
     }
 }

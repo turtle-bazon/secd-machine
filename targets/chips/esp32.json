@@ -1,0 +1,30 @@
+{
+    "chip": "esp32",
+    "description": "Espressif ESP32 dual-core Xtensa LX6 microcontroller",
+    "output": {
+        "format": "uf2",
+        "family": "esp32"
+    },
+    "memory": {
+        "flash_size": 4194304,
+        "sram_size": 532480
+    },
+    "constraints": {
+        "max_fixnum": 2147483647,
+        "min_fixnum": -2147483648,
+        "bignum_support": true,
+        "max_string_length": 1024,
+        "max_list_depth": 128
+    },
+    "capabilities": [
+        "gpio",
+        "uart",
+        "spi",
+        "i2c",
+        "adc",
+        "pwm",
+        "wifi",
+        "ble",
+        "timer"
+    ]
+}
