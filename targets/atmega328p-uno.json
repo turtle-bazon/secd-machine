@@ -1,0 +1,57 @@
+{
+    "name": "atmega328p-uno",
+    "chip": "atmega328p",
+    "board": "Arduino Uno",
+    "description": "Arduino Uno with ATmega328P",
+    "version": "0.1.0",
+    
+    "output": {
+        "format": "bin"
+    },
+    
+    "memory": {
+        "heap_size": 1500,
+        "stack_size": 512,
+        "symbols_size": 128,
+        "flash_size": 32768,
+        "sram_size": 2048
+    },
+    
+    "flash_layout": {
+        "firmware_addr": 0,
+        "firmware_size": 28672,
+        "bytecode_addr": 28672,
+        "bytecode_size": 4096
+    },
+    
+    "features": [
+        "has-gpio",
+        "has-uart",
+        "has-spi",
+        "has-i2c",
+        "has-adc",
+        "has-pwm",
+        "has-timer"
+    ],
+    
+    "primitives": {
+        "gpio-init": {"id": 128, "args": 2},
+        "gpio-write": {"id": 129, "args": 2},
+        "gpio-read": {"id": 130, "args": 1},
+        "uart-init": {"id": 131, "args": 1},
+        "uart-write": {"id": 132, "args": 1},
+        "uart-read": {"id": 133, "args": 0},
+        "sleep": {"id": 134, "args": 1},
+        "millis": {"id": 135, "args": 0},
+        "adc-read": {"id": 136, "args": 1},
+        "pwm-write": {"id": 137, "args": 2}
+    },
+    
+    "constraints": {
+        "max_fixnum": 32767,
+        "min_fixnum": -32768,
+        "bignum_support": false,
+        "max_string_length": 64,
+        "max_list_depth": 16
+    }
+}
