@@ -24,12 +24,22 @@ endif()
 # Include pico-sdk
 include(${PICO_SDK_PATH}/pico_sdk_init.cmake)
 
-project(secd-machine-rp2040 C CXX ASM)
+project(secd-machine-rp2040-pico C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
 # Disable exceptions and RTTI for smaller binary
 add_compile_options(-fno-exceptions -fno-rtti)
+
+# Firmware variant:
+#   ON  (debug)  - print machine info over serial on startup, wait for host.
+#   OFF (release)- start bytecode immediately, no serial output, no waits.
+option(SECD_DEBUG_BUILD "Debug firmware: serial info on startup with waits" ON)
+if(SECD_DEBUG_BUILD)
+    message(STATUS "SECD firmware: DEBUG (serial info + startup waits)")
+else()
+    message(STATUS "SECD firmware: RELEASE (no serial, start immediately)")
+endif()
 
 # Initialize pico-sdk
 pico_sdk_init()
@@ -48,11 +58,12 @@ set(SOURCES
 
 # Create executable
 add_executable(secd-machine ${SOURCES})
+target_compile_definitions(secd-machine PRIVATE SECD_DEBUG_BUILD=$<BOOL:${SECD_DEBUG_BUILD}>)
 
 # Include directories
 target_include_directories(secd-machine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/build-rp2040/cxx-shim
+    ${CMAKE_CURRENT_BINARY_DIR}/cxx-shim
 )
 
 # Link libraries
