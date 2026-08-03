@@ -4,8 +4,4 @@ build-*/
 *.a
 
 # generated target artifacts
-output/*.machine
-output/*.metadata.json
-output/*.uf2
-output/*.bin
-output/*.elf
+output/

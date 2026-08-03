@@ -23,6 +23,8 @@ LIB = libsecd.a
 
 # Output
 OUTPUT_DIR = output
+# Scratch dir for generated target metadata (zipped into .machine, not delivered)
+META_DIR = $(OUTPUT_DIR)/.build
 TARGETS = rp2040-pico esp32-devkit atmega328p-uno
 
 # Pico SDK
@@ -65,8 +67,8 @@ machine: machines
 
 # Generate target metadata with the CL build version injected
 # (board file in targets/boards/; its chip base is merged in by secd-lisp)
-$(OUTPUT_DIR)/%.metadata.json: targets/boards/%.json
-	@mkdir -p $(OUTPUT_DIR)
+$(META_DIR)/%.metadata.json: targets/boards/%.json
+	@mkdir -p $(META_DIR)
 	@echo "Generating metadata for $< (version from secd-lisp build)..."
 	@sbcl --non-interactive --load $(SECD_LISP_ASD) \
 		--eval '(asdf:load-system :secd-lisp)' \
@@ -76,22 +78,22 @@ $(OUTPUT_DIR)/%.metadata.json: targets/boards/%.json
 $(TARGETS): %: $(OUTPUT_DIR)/%.machine
 
 # RP2040: build real firmware with pico-sdk (debug variant)
-$(OUTPUT_DIR)/rp2040-pico.machine: $(PICO_BUILD_DIR)/secd-machine.uf2 $(OUTPUT_DIR)/rp2040-pico.metadata.json
+$(OUTPUT_DIR)/rp2040-pico.machine: $(PICO_BUILD_DIR)/secd-machine.uf2 $(META_DIR)/rp2040-pico.metadata.json
 	@mkdir -p $(OUTPUT_DIR)
 	@python3 -c "import zipfile; \
 		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
 		zf.write('$(PICO_BUILD_DIR)/secd-machine.uf2', 'firmware.uf2'); \
-		zf.write('$(OUTPUT_DIR)/rp2040-pico.metadata.json', 'metadata.json'); \
+		zf.write('$(META_DIR)/rp2040-pico.metadata.json', 'metadata.json'); \
 		zf.close()"
 	@echo "Created $@ (firmware.uf2 + metadata.json, debug)"
 
 # RP2040: release variant (no serial, start immediately)
-$(OUTPUT_DIR)/rp2040-pico.release.machine: $(PICO_BUILD_DIR_RELEASE)/secd-machine.uf2 $(OUTPUT_DIR)/rp2040-pico.metadata.json
+$(OUTPUT_DIR)/rp2040-pico.release.machine: $(PICO_BUILD_DIR_RELEASE)/secd-machine.uf2 $(META_DIR)/rp2040-pico.metadata.json
 	@mkdir -p $(OUTPUT_DIR)
 	@python3 -c "import zipfile; \
 		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
 		zf.write('$(PICO_BUILD_DIR_RELEASE)/secd-machine.uf2', 'firmware.uf2'); \
-		zf.write('$(OUTPUT_DIR)/rp2040-pico.metadata.json', 'metadata.json'); \
+		zf.write('$(META_DIR)/rp2040-pico.metadata.json', 'metadata.json'); \
 		zf.close()"
 	@echo "Created $@ (firmware.uf2 + metadata.json, release)"
 
@@ -136,17 +138,17 @@ $(PICO_BUILD_DIR_RELEASE)/secd-machine.uf2: CMakeLists.txt.rp2040
 	$(call RP2040-CMAKE,$(PICO_BUILD_DIR_RELEASE),OFF)
 
 # ESP32: placeholder (real build with ESP-IDF later)
-$(OUTPUT_DIR)/esp32-devkit.machine: $(OUTPUT_DIR)/esp32-devkit.uf2 $(OUTPUT_DIR)/esp32-devkit.metadata.json
+$(OUTPUT_DIR)/esp32-devkit.machine: $(META_DIR)/esp32-devkit.uf2 $(META_DIR)/esp32-devkit.metadata.json
 	@mkdir -p $(OUTPUT_DIR)
 	@python3 -c "import zipfile; \
 		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
-		zf.write('$(OUTPUT_DIR)/esp32-devkit.uf2', 'firmware.uf2'); \
-		zf.write('$(OUTPUT_DIR)/esp32-devkit.metadata.json', 'metadata.json'); \
+		zf.write('$(META_DIR)/esp32-devkit.uf2', 'firmware.uf2'); \
+		zf.write('$(META_DIR)/esp32-devkit.metadata.json', 'metadata.json'); \
 		zf.close()"
 	@echo "Created $@"
 
-$(OUTPUT_DIR)/esp32-devkit.uf2: targets/boards/esp32-devkit.json
-	@mkdir -p $(OUTPUT_DIR)
+$(META_DIR)/esp32-devkit.uf2: targets/boards/esp32-devkit.json
+	@mkdir -p $(META_DIR)
 	@python3 -c "import struct, json; \
 		m = json.load(open('$<')); \
 		fl = m.get('flash_layout', {}); \
@@ -156,17 +158,17 @@ $(OUTPUT_DIR)/esp32-devkit.uf2: targets/boards/esp32-devkit.json
 	@echo "Created placeholder $@"
 
 # ATmega328P: placeholder (real build with avr-gcc later)
-$(OUTPUT_DIR)/atmega328p-uno.machine: $(OUTPUT_DIR)/atmega328p-uno.uf2 $(OUTPUT_DIR)/atmega328p-uno.metadata.json
+$(OUTPUT_DIR)/atmega328p-uno.machine: $(META_DIR)/atmega328p-uno.uf2 $(META_DIR)/atmega328p-uno.metadata.json
 	@mkdir -p $(OUTPUT_DIR)
 	@python3 -c "import zipfile; \
 		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
-		zf.write('$(OUTPUT_DIR)/atmega328p-uno.uf2', 'firmware.uf2'); \
-		zf.write('$(OUTPUT_DIR)/atmega328p-uno.metadata.json', 'metadata.json'); \
+		zf.write('$(META_DIR)/atmega328p-uno.uf2', 'firmware.uf2'); \
+		zf.write('$(META_DIR)/atmega328p-uno.metadata.json', 'metadata.json'); \
 		zf.close()"
 	@echo "Created $@"
 
-$(OUTPUT_DIR)/atmega328p-uno.uf2: targets/boards/atmega328p-uno.json
-	@mkdir -p $(OUTPUT_DIR)
+$(META_DIR)/atmega328p-uno.uf2: targets/boards/atmega328p-uno.json
+	@mkdir -p $(META_DIR)
 	@python3 -c "import struct, json; \
 		m = json.load(open('$<')); \
 		fl = m.get('flash_layout', {}); \
