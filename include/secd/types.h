@@ -127,19 +127,24 @@ static inline bool secd_is_bignum(secd_value_t val) {
 
 /*
  * Fixnum operations
- * Fixnum range: -32768 to 32767 (16-bit signed)
+ *
+ * Fixnums are immediate values: the 16-bit handle is composed of a 4-bit type
+ * tag plus a 12-bit index, and a fixnum's number payload occupies those 12
+ * index bits.  Therefore the representable range is signed 12-bit:
+ * -2048 to 2047.  Values are stored as the low 12 bits (two's complement) and
+ * sign-extended on read.
  */
-
-#define SECD_FIXNUM_MIN (-32768)
-#define SECD_FIXNUM_MAX 32767
+#define SECD_FIXNUM_MIN (-2048)
+#define SECD_FIXNUM_MAX 2047
 
 static inline secd_value_t secd_make_fixnum(int16_t val) {
-    uint16_t uval = (uint16_t)val;
-    return secd_make_handle(SECD_TYPE_FIXNUM, uval);
+    return secd_make_handle(SECD_TYPE_FIXNUM, ((uint16_t)val & 0x0FFF));
 }
 
 static inline int16_t secd_fixnum_value(secd_value_t val) {
-    return (int16_t)secd_get_index(val);
+    /* Sign-extend the 12-bit payload (bit 11 is the sign bit). */
+    uint16_t i = (uint16_t)(val & SECD_INDEX_MASK);
+    return (int16_t)((i ^ 0x0800) - 0x0800);
 }
 
 /*

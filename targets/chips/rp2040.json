@@ -10,8 +10,8 @@
         "sram_size": 270336
     },
     "constraints": {
-        "max_fixnum": 32767,
-        "min_fixnum": -32768,
+        "max_fixnum": 2047,
+        "min_fixnum": -2048,
         "bignum_support": false,
         "max_string_length": 256,
         "max_list_depth": 64
