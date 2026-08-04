@@ -1,0 +1,28 @@
+{
+    "chip": "samd21",
+    "description": "Microchip SAMD21 ARM Cortex-M0+ microcontroller (48MHz, 256KB flash, 32KB SRAM)",
+    "output": {
+        "format": "uf2",
+        "family": "samd21"
+    },
+    "memory": {
+        "flash_size": 262144,
+        "sram_size": 32768
+    },
+    "constraints": {
+        "max_fixnum": 2047,
+        "min_fixnum": -2048,
+        "bignum_support": false,
+        "max_string_length": 256,
+        "max_list_depth": 64
+    },
+    "capabilities": [
+        "gpio",
+        "uart",
+        "spi",
+        "i2c",
+        "adc",
+        "pwm",
+        "timer"
+    ]
+}

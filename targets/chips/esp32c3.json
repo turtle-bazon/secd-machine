@@ -1,0 +1,29 @@
+{
+    "chip": "esp32c3",
+    "description": "Espressif ESP32-C3 single-core RISC-V (RV32IMC) microcontroller",
+    "output": {
+        "format": "uf2",
+        "family": "esp32c3"
+    },
+    "memory": {
+        "flash_size": 4194304,
+        "sram_size": 409600
+    },
+    "constraints": {
+        "max_fixnum": 2147483647,
+        "min_fixnum": -2147483648,
+        "bignum_support": true,
+        "max_string_length": 1024,
+        "max_list_depth": 128
+    },
+    "capabilities": [
+        "gpio",
+        "uart",
+        "spi",
+        "i2c",
+        "adc",
+        "pwm",
+        "wifi",
+        "timer"
+    ]
+}

@@ -1,0 +1,40 @@
+{
+    "name": "rp2040-zero",
+    "chip": "rp2040",
+    "board": "Waveshare RP2040-Zero",
+    "description": "Waveshare RP2040-Zero with WS2812 RGB on GPIO16, no on-board LED (2MB flash)",
+    "memory": {
+        "flash_size": 2097152,
+        "heap_size": 4095,
+        "stack_size": 16000,
+        "symbols_size": 256
+    },
+    "flash_layout": {
+        "firmware_addr": 0,
+        "firmware_size": 1048576,
+        "bytecode_addr": 1048576,
+        "bytecode_size": 524288
+    },
+    "board_pins": {
+        "ws2812_pin": 16,
+        "led_pin": null
+    },
+    "features": [
+        "gpio",
+        "uart",
+        "sleep",
+        "millis"
+    ],
+    "primitives": {
+        "gpio-init": {"id": 15, "args": 2},
+        "gpio-write": {"id": 16, "args": 2},
+        "gpio-read": {"id": 17, "args": 1},
+        "uart-init": {"id": 18, "args": 1},
+        "uart-write": {"id": 19, "args": 1},
+        "uart-read": {"id": 20, "args": 0},
+        "sleep": {"id": 21, "args": 1},
+        "millis": {"id": 22, "args": 0},
+        "adc-read": {"id": 23, "args": 1},
+        "pwm-write": {"id": 24, "args": 2}
+    }
+}

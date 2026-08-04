@@ -1,0 +1,37 @@
+{
+    "name": "seeed-xiao-samd21",
+    "chip": "samd21",
+    "board": "Seeed XIAO SAMD21",
+    "description": "Seeed XIAO SAMD21 (SAMD21G18A), blue LED on PA17 (digital pin 13), UF2 bootloader at 0x2000",
+    "memory": {
+        "flash_size": 262144,
+        "sram_size": 32768,
+        "heap_size": 4095,
+        "stack_size": 16000,
+        "symbols_size": 256
+    },
+    "flash_layout": {
+        "firmware_addr": 8192,
+        "firmware_size": 245760,
+        "bytecode_addr": 253952,
+        "bytecode_size": 8192
+    },
+    "board_pins": {
+        "ws2812_pin": null,
+        "led_pin": 13
+    },
+    "features": [
+        "gpio",
+        "sleep",
+        "millis"
+    ],
+    "primitives": {
+        "gpio-init": {"id": 15, "args": 2},
+        "gpio-write": {"id": 16, "args": 2},
+        "gpio-read": {"id": 17, "args": 1},
+        "sleep": {"id": 18, "args": 1},
+        "millis": {"id": 19, "args": 0},
+        "adc-read": {"id": 20, "args": 1},
+        "pwm-write": {"id": 21, "args": 2}
+    }
+}

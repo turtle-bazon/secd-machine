@@ -1,0 +1,28 @@
+{
+    "chip": "rp2350",
+    "description": "RP2350 dual-core ARM Cortex-M33 / RISC-V (Hazard3) microcontroller",
+    "output": {
+        "format": "uf2",
+        "family": "rp2350-arm-ns"
+    },
+    "memory": {
+        "flash_size": 16777216,
+        "sram_size": 532480
+    },
+    "constraints": {
+        "max_fixnum": 2047,
+        "min_fixnum": -2048,
+        "bignum_support": false,
+        "max_string_length": 256,
+        "max_list_depth": 64
+    },
+    "capabilities": [
+        "gpio",
+        "uart",
+        "spi",
+        "i2c",
+        "adc",
+        "pwm",
+        "timer"
+    ]
+}

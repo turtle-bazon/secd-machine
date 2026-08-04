@@ -1,7 +1,11 @@
 # build
 build-*/
+esp32-idf/build/
 *.o
 *.a
 
 # generated target artifacts
 output/
+
+# ESP-IDF generated config
+esp32-idf/sdkconfig
