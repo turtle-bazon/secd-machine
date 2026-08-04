@@ -171,6 +171,63 @@ int secd_execute(secd_machine_t *machine, const uint8_t *bytecode, size_t length
                 break;
             }
             
+            case OP_ARGS: {
+                /* Bind `count` arguments popped from the S stack into the
+                   environment. E is a flat list of bound values, innermost
+                   first; new args are consed onto the front so parameter 0
+                   is the head. The S-stack top holds the LAST argument
+                   (the callee pushes args last-first), hence the reversal
+                   via cons. */
+                uint8_t count = bytecode[ip + 1];
+                for (uint8_t i = 0; i < count; i++) {
+                    if (secd_is_nil(machine->S)) {
+                        secd_set_error(machine, SECD_ERROR_STACK_UNDERFLOW);
+                        return -1;
+                    }
+                    machine->E = secd_cons(machine->heap, secd_pop(machine), machine->E);
+                }
+                ip += 2;
+                break;
+            }
+            
+            case OP_LD: {
+                /* Load variable at E[index] (innermost-first). */
+                uint16_t index = secd_read_u16(&bytecode[ip + 1]);
+                secd_value_t e = machine->E;
+                uint16_t i = 0;
+                while (secd_is_pair(e) && i < index) {
+                    e = secd_cdr(machine->heap, e);
+                    i++;
+                }
+                secd_value_t val = secd_is_pair(e) ? secd_car(machine->heap, e) : SECD_NIL;
+                if (secd_push(machine, val) != 0) {
+                    return -1;
+                }
+                ip += 3;
+                break;
+            }
+            
+            case OP_ST: {
+                /* Store into variable at index `index`; leaves the value on
+                 * the stack (setf yields the stored value). */
+                uint16_t index = secd_read_u16(&bytecode[ip + 1]);
+                secd_value_t val = secd_pop(machine);
+                secd_value_t e = machine->E;
+                uint16_t i = 0;
+                while (secd_is_pair(e) && i < index) {
+                    e = secd_cdr(machine->heap, e);
+                    i++;
+                }
+                if (secd_is_pair(e)) {
+                    secd_set_car(machine->heap, e, val);
+                }
+                if (secd_push(machine, val) != 0) {
+                    return -1;
+                }
+                ip += 3;
+                break;
+            }
+            
             case OP_ADD: {
                 secd_value_t b = secd_pop(machine);
                 secd_value_t a = secd_pop(machine);
@@ -339,18 +396,16 @@ int secd_execute(secd_machine_t *machine, const uint8_t *bytecode, size_t length
             }
             
             case OP_SEL: {
-                /* Conditional branch */
+                /* Conditional branch.
+                   Layout: SEL <else_addr:u16> [then body inline].
+                   Cond TRUE  -> fall through (ip+3) into the inline then body.
+                   Cond FALSE -> jump to <else_addr>. */
                 secd_value_t condition = secd_pop(machine);
-                uint16_t then_addr = secd_read_u16(&bytecode[ip + 1]);
-                
-                /* Save return address for JOIN */
-                secd_dump_push(machine, secd_make_handle(0, ip + 3));
-                
+                uint16_t else_addr = secd_read_u16(&bytecode[ip + 1]);
                 if (secd_bool_value(condition)) {
-                    ip = then_addr;
+                    ip += 3;
                 } else {
-                    /* else_addr follows then_addr */
-                    ip = secd_read_u16(&bytecode[then_addr]);
+                    ip = else_addr;
                 }
                 break;
             }
