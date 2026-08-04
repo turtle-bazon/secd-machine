@@ -130,11 +130,17 @@ define RP2040-CMAKE
 endef
 
 # Debug firmware (default; current behavior: serial info + startup waits)
-$(PICO_BUILD_DIR)/secd-machine.uf2: CMakeLists.txt.rp2040
+# Depends on the sources so a core/HAL change triggers a CMake rebuild
+# (CMake itself re-tracks per-file deps; this just forces the build step).
+RP2040_SRCS = CMakeLists.txt.rp2040 \
+	src/rp2040/main.cpp src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp \
+	src/core/bytecode.cpp src/core/primitives.cpp src/core/symbols.cpp \
+	src/hal/rp2040.cpp
+$(PICO_BUILD_DIR)/secd-machine.uf2: $(RP2040_SRCS)
 	$(call RP2040-CMAKE,$(PICO_BUILD_DIR),ON)
 
 # Release firmware (start bytecode immediately, no serial, no waits)
-$(PICO_BUILD_DIR_RELEASE)/secd-machine.uf2: CMakeLists.txt.rp2040
+$(PICO_BUILD_DIR_RELEASE)/secd-machine.uf2: $(RP2040_SRCS)
 	$(call RP2040-CMAKE,$(PICO_BUILD_DIR_RELEASE),OFF)
 
 # ESP32: placeholder (real build with ESP-IDF later)

@@ -70,6 +70,12 @@ set(SOURCES
 add_executable(secd-machine ${SOURCES})
 target_compile_definitions(secd-machine PRIVATE SECD_DEBUG_BUILD=$<BOOL:${SECD_DEBUG_BUILD}>)
 
+# Machine version + enabled features, surfaced to the debug serial banner.
+# Keep SECD_MACHINE_VERSION in sync with secd-lisp/secd-lisp.asd :version.
+set(SECD_MACHINE_VERSION "0.0.1.0" CACHE STRING "SECD Machine version (reported over serial in debug builds)")
+target_compile_definitions(secd-machine PRIVATE SECD_MACHINE_VERSION="${SECD_MACHINE_VERSION}")
+target_compile_definitions(secd-machine PRIVATE SECD_FEATURES_STR="${SECD_FEATURES}")
+
 # Enable per-feature defines and collect peripheral libraries
 foreach(_f ${_SECD_FEATURES})
     string(TOUPPER "${_f}" _F)

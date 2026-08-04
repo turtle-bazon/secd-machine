@@ -17,6 +17,7 @@
 #include "secd/bytecode.h"
 #include "hal/rp2040.h"
 #include "pico/stdlib.h"
+#include "pico/stdio_usb.h"
 #include "hardware/flash.h"
 #include <cstdio>
 #include <cstring>
@@ -80,13 +81,31 @@ static int load_bytecode(void) {
 
 /* Main entry point */
 int main(void) {
-#if SECD_DEBUG_BUILD
-    /* Bring up USB CDC and wait for the host to enumerate before printing */
+    /* Bring up USB CDC for both builds. Debug then prints a banner (and waits
+       briefly for host enumeration); release uses USB too so that SECD-Lisp
+       programs can drive serial/mass-storage/other TinyUSB devices, but emits
+       no debug output. Keeping stdio_init_all() unconditional also keeps the
+       TinyUSB stack linked (it runs tud_task() on a periodic alarm). */
     stdio_init_all();
-    SECD_WAIT_MS(4000);
 
-    SECD_INFO("SECD Machine v0.1.0\n");
-    SECD_INFO("RP2040 Target\n");
+#if SECD_DEBUG_BUILD
+    {
+        /* Wait for the host to enumerate before printing. Waiting on
+           stdio_usb_connected() (instead of a blind sleep) keeps the startup
+           banner from being missed if the terminal is already open. */
+        const uint32_t deadline = to_ms_since_boot(get_absolute_time()) + 5000;
+        while (!stdio_usb_connected() &&
+               to_ms_since_boot(get_absolute_time()) < deadline) {
+            sleep_ms(50);
+        }
+        sleep_ms(500);
+    }
+
+    SECD_INFO("SECD Machine v%s\n", SECD_MACHINE_VERSION);
+    SECD_INFO("Build: %s\n", SECD_DEBUG_BUILD ? "debug (serial + info)" : "release");
+    SECD_INFO("Features: %s\n", SECD_FEATURES_STR);
+    SECD_INFO("Platform: RP2040 (Pico)\n");
+    SECD_INFO("Heap: %d objects (~%d bytes)\n", HEAP_OBJECTS, HEAP_OBJECTS * sizeof(secd_object_t));
 #endif
 
     /* Initialize heap */
