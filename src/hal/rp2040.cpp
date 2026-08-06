@@ -190,3 +190,33 @@ void hal_reset(void) {
 void hal_sleep(uint32_t ms) {
     sleep_ms(ms);
 }
+
+/*
+ * Waveform player: drive a pin through a precomputed pulse train.
+ * Cortex-M0+ has no cycle counter, so sub-microsecond timing uses a
+ * busy loop calibrated against the 1us system timer at startup
+ * (calibration happens once in hal_init; adjust on real hardware).
+ */
+static uint32_t wave_ns_per_loop = 0;
+
+static void wave_calibrate(void) {
+    /* Time 5000 NOP-ish loop iterations and derive ns/iteration. */
+    uint32_t t0 = (uint32_t)time_us_64();
+    volatile uint32_t n = 5000u;
+    while (n--) { __asm volatile ("nop"); }
+    uint32_t dt = (uint32_t)time_us_64() - t0;
+    if (dt == 0) dt = 1;
+    wave_ns_per_loop = (dt * 1000u) / 5000u;  /* ns per iteration */
+    if (wave_ns_per_loop == 0) wave_ns_per_loop = 1;
+}
+
+void hal_wave_play(int pin, int start_level, const uint16_t *duration_ns, int count) {
+    if (wave_ns_per_loop == 0) wave_calibrate();
+    int level = start_level;
+    for (int i = 0; i < count; i++) {
+        gpio_put((uint)pin, level);
+        uint32_t iters = duration_ns[i] / wave_ns_per_loop;
+        while (iters--) { __asm volatile ("nop"); }
+        level = 1 - level;
+    }
+}

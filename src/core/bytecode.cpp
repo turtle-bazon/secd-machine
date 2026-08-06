@@ -20,6 +20,8 @@
 #include "secd/primitives.h"
 #include "hal/hal.h"
 #include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 /*
  * Bytecode loader and executor.
@@ -114,7 +116,6 @@ int secd_execute(secd_machine_t *machine, const uint8_t *bytecode, size_t length
         }
 
         uint8_t opcode = bytecode[ip];
-        
         switch (opcode) {
             case OP_JMP: {
                 /* Unconditional jump */

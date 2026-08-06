@@ -369,3 +369,31 @@ void hal_reset(void) {
 void hal_sleep(uint32_t ms) {
     hal_delay(ms);
 }
+
+/* Waveform player: same calibrated-NOP approach as RP2040 (M0+, no cycle
+ * counter), but the SAMD21 runs at only 8MHz so its per-iteration cost is
+ * large (~500ns) - it is the least suitable target for WS2812 bit timing.
+ * Calibrate on real hardware).
+ */
+static uint32_t wave_ns_per_loop = 0;
+
+static void wave_calibrate(void) {
+    uint32_t t0 = secd_systick_ms;
+    volatile uint32_t n = 100000u;
+    while (n--) { __asm volatile ("nop"); }
+    uint32_t dt = secd_systick_ms - t0;
+    if (dt == 0) dt = 1;
+    wave_ns_per_loop = (dt * 1000000u) / 100000u;
+    if (wave_ns_per_loop == 0) wave_ns_per_loop = 1;
+}
+
+void hal_wave_play(int pin, int start_level, const uint16_t *duration_ns, int count) {
+    if (wave_ns_per_loop == 0) wave_calibrate();
+    int level = start_level;
+    for (int i = 0; i < count; i++) {
+        hal_gpio_write((uint8_t)pin, (uint8_t)level);
+        uint32_t iters = duration_ns[i] / wave_ns_per_loop;
+        while (iters--) { __asm volatile ("nop"); }
+        level = 1 - level;
+    }
+}

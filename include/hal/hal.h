@@ -54,6 +54,11 @@ int hal_gpio_init(uint8_t pin, uint8_t mode);
 int hal_gpio_write(uint8_t pin, uint8_t value);
 int hal_gpio_read(uint8_t pin);
 
+/* Waveform player: drive `pin` through count segments, starting at
+ * start_level and flipping level after each. Durations are in nanoseconds.
+ * The HAL renders the whole packet natively (no interpreter jitter). */
+void hal_wave_play(int pin, int start_level, const uint16_t *duration_ns, int count);
+
 /* UART/Serial */
 void hal_serial_init(uint32_t baud);
 void hal_serial_write(uint8_t byte);

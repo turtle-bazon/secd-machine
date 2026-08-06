@@ -15,6 +15,7 @@
 
 #include "driver/gpio.h"
 #include "driver/uart.h"
+#include "esp_cpu.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -128,5 +129,23 @@ int hal_flash_write(uint32_t addr, const uint8_t *buf, size_t len) { (void)addr;
 int hal_flash_erase(uint32_t addr, size_t len) { (void)addr; (void)len; return 0; }
 
 void hal_reset(void) { esp_restart(); }
+
+/* Waveform player: drive a pin through a precomputed pulse train.
+ * Uses the RISC-V machine cycle counter for sub-microsecond timing.
+ */
+#include "esp_cpu.h"
+void hal_wave_play(int pin, int start_level, const uint16_t *duration_ns, int count) {
+    static uint32_t cpu_hz = 0;
+    if (cpu_hz == 0) cpu_hz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ * 1000000UL;
+    int level = start_level;
+    for (int i = 0; i < count; i++) {
+        gpio_set_level((gpio_num_t)pin, level);
+        uint32_t cyc = (uint32_t)(((uint64_t)duration_ns[i] * cpu_hz) / 1000000000ULL);
+        uint32_t start = esp_cpu_get_cycle_count();
+        while (((uint32_t)esp_cpu_get_cycle_count() - start) < cyc) {
+        }
+        level = 1 - level;
+    }
+}
 
 } /* extern "C" */

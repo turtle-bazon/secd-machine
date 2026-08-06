@@ -97,6 +97,11 @@ static secd_value_t get_arg2(secd_heap_t *heap, secd_value_t args) {
     return secd_car(heap, secd_cdr(heap, args));
 }
 
+/* Helper: get third argument */
+static secd_value_t get_arg3(secd_heap_t *heap, secd_value_t args) {
+    return secd_car(heap, secd_cdr(heap, secd_cdr(heap, args)));
+}
+
 /* List operations */
 secd_value_t prim_car(secd_heap_t *heap, secd_value_t args) {
     secd_value_t pair = get_arg1(heap, args);
@@ -207,6 +212,9 @@ secd_value_t prim_atom(secd_heap_t *heap, secd_value_t args) {
 #define SECD_FEATURE_UART 0
 #endif
 
+/* Max segments a single wave-play call can drive (durations in 100ns ticks). */
+#define SECD_WAVE_MAX_SEGMENTS 512
+
 #if SECD_FEATURE_GPIO
 secd_value_t prim_gpio_init(secd_heap_t *heap, secd_value_t args) {
     uint8_t pin = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
@@ -270,6 +278,29 @@ secd_value_t prim_pwm_write(secd_heap_t *heap, secd_value_t args) {
     return secd_make_fixnum(0);
 }
 
+/*
+ * wave-play: drive a pin through a precomputed waveform.
+ *   (wave-play pin start-level (dur0 dur1 ... durN))
+ * Durations are in 100ns ticks; the HAL flips the pin level after each one
+ * (starting at start-level), so a WS2812 frame is just the alternating
+ * high/low pulse durations followed by a reset (a long low segment).
+ */
+secd_value_t prim_wave_play(secd_heap_t *heap, secd_value_t args) {
+    int16_t pin = secd_fixnum_value(get_arg1(heap, args));
+    int16_t start_level = secd_fixnum_value(get_arg2(heap, args));
+    secd_value_t node = get_arg3(heap, args);
+
+    uint16_t duration_ns[SECD_WAVE_MAX_SEGMENTS];
+    int count = 0;
+    while (secd_is_pair(node) && count < SECD_WAVE_MAX_SEGMENTS) {
+        int16_t ticks = secd_fixnum_value(secd_car(heap, node));
+        duration_ns[count++] = (uint16_t)(ticks > 0 ? (uint16_t)ticks * 100u : 0u);
+        node = secd_cdr(heap, node);
+    }
+    hal_wave_play((int)pin, (int)start_level, duration_ns, count);
+    return SECD_NIL;
+}
+
 /* Register all built-in primitives */
 void secd_register_builtins(secd_prim_registry_t *registry) {
     if (!registry) return;
@@ -299,17 +330,18 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
     
     /* HAL primitives (board features) */
 #if SECD_FEATURE_GPIO
-    secd_register_prim(registry, "gpio-init", prim_gpio_init);
-    secd_register_prim(registry, "gpio-write", prim_gpio_write);
-    secd_register_prim(registry, "gpio-read", prim_gpio_read);
+    secd_register_prim(registry, "%gpio-init", prim_gpio_init);
+    secd_register_prim(registry, "%gpio-write", prim_gpio_write);
+    secd_register_prim(registry, "%gpio-read", prim_gpio_read);
 #endif
 #if SECD_FEATURE_UART
-    secd_register_prim(registry, "uart-init", prim_uart_init);
-    secd_register_prim(registry, "uart-write", prim_uart_write);
-    secd_register_prim(registry, "uart-read", prim_uart_read);
+    secd_register_prim(registry, "%uart-init", prim_uart_init);
+    secd_register_prim(registry, "%uart-write", prim_uart_write);
+    secd_register_prim(registry, "%uart-read", prim_uart_read);
 #endif
-    secd_register_prim(registry, "sleep", prim_sleep);
-    secd_register_prim(registry, "millis", prim_millis);
-    secd_register_prim(registry, "adc-read", prim_adc_read);
-    secd_register_prim(registry, "pwm-write", prim_pwm_write);
+    secd_register_prim(registry, "%sleep", prim_sleep);
+    secd_register_prim(registry, "%millis", prim_millis);
+    secd_register_prim(registry, "%adc-read", prim_adc_read);
+    secd_register_prim(registry, "%pwm-write", prim_pwm_write);
+    secd_register_prim(registry, "%wave-play", prim_wave_play);
 }

@@ -57,6 +57,10 @@ extern "C" {
 #define SECD_TRUE          ((secd_value_t)0x8000)
 #define SECD_FALSE         ((secd_value_t)0x9000)
 
+/* Fixnum encodings of 0 and 1 (the compiler emits nil/t literals as LDC 0/1) */
+#define SECD_FIXNUM_ZERO   ((secd_value_t)(SECD_TYPE_FIXNUM << SECD_TYPE_SHIFT))
+#define SECD_FIXNUM_ONE    ((secd_value_t)((SECD_TYPE_FIXNUM << SECD_TYPE_SHIFT) | 1))
+
 /* Value type */
 typedef uint16_t secd_value_t;
 
@@ -92,7 +96,10 @@ static inline uint16_t secd_get_index(secd_value_t val) {
 
 /* Check if value is nil */
 static inline bool secd_is_nil(secd_value_t val) {
-    return val == SECD_NIL;
+    /* The compiler emits nil/t literals as LDC 0 / LDC 1, i.e. as the fixnum
+     * encodings 0x1000 / 0x1001, while the runtime uses SECD_NIL (0) and
+     * SECD_TRUE (0x8000). Accept both representations here. */
+    return val == SECD_NIL || val == SECD_FIXNUM_ZERO;
 }
 
 /* Check if value is boolean */
@@ -156,7 +163,7 @@ static inline secd_value_t secd_make_bool(bool val) {
 }
 
 static inline bool secd_bool_value(secd_value_t val) {
-    return val == SECD_TRUE;
+    return val == SECD_TRUE || val == SECD_FIXNUM_ONE;
 }
 
 /*
