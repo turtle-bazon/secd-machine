@@ -40,6 +40,7 @@ PICO_BOARD ?= pico
 
 # RP2040 Zero (M0+, 2MB flash, WS2812 on GPIO16)
 RP2040_ZERO_DIR = build-rp2040-zero
+RP2040_ZERO_DIR_RELEASE = build-rp2040-zero-release
 RP2040_ZERO_TOOLCHAIN = $(PICO_TOOLCHAIN_M0PLUS)
 RP2040_ZERO_BOARD = waveshare_rp2040_zero
 
@@ -194,6 +195,9 @@ $(PICO_BUILD_DIR_RELEASE)/secd-machine.uf2: $(RP2040_SRCS)
 $(RP2040_ZERO_DIR)/secd-machine.uf2: $(RP2040_SRCS)
 	$(call RP2-CMAKE,$(RP2040_ZERO_DIR),$(RP2040_ZERO_TOOLCHAIN),ON,$(RP2040_ZERO_BOARD))
 
+$(RP2040_ZERO_DIR_RELEASE)/secd-machine.uf2: $(RP2040_SRCS)
+	$(call RP2-CMAKE,$(RP2040_ZERO_DIR_RELEASE),$(RP2040_ZERO_TOOLCHAIN),OFF,$(RP2040_ZERO_BOARD))
+
 # rp2350-zero (M33, WS2812 on GPIO16)
 $(RP2350_ZERO_DIR)/secd-machine.uf2: $(RP2040_SRCS)
 	$(call RP2-CMAKE,$(RP2350_ZERO_DIR),$(RP2350_ZERO_TOOLCHAIN),ON,$(RP2350_ZERO_BOARD))
@@ -217,6 +221,16 @@ endef
 $(eval $(call RP2-PACK,rp2040-zero,$(RP2040_ZERO_DIR)))
 $(eval $(call RP2-PACK,rp2350-zero,$(RP2350_ZERO_DIR)))
 $(eval $(call RP2-PACK,rp2350-beetle,$(RP2350_BEETLE_DIR)))
+
+# rp2040-zero release variant (same metadata as debug, release firmware)
+$(OUTPUT_DIR)/rp2040-zero.release.machine: $(RP2040_ZERO_DIR_RELEASE)/secd-machine.uf2 $(META_DIR)/rp2040-zero.metadata.json
+	@mkdir -p $(OUTPUT_DIR)
+	@python3 -c "import zipfile; \
+		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
+		zf.write('$(RP2040_ZERO_DIR_RELEASE)/secd-machine.uf2', 'firmware.uf2'); \
+		zf.write('$(META_DIR)/rp2040-zero.metadata.json', 'metadata.json'); \
+		zf.close()"
+	@echo "Created $@ (firmware.uf2 + metadata.json, release)"
 
 # Seeed XIAO SAMD21: bare-metal build with arm-none-eabi-g++.
 $(SAMD21_DIR)/secd-machine.elf: $(SAMD21_SRCS)
