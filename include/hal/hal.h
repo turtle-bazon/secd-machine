@@ -71,6 +71,21 @@ void hal_print(const char *str);
 void hal_println(const char *str);
 void hal_print_int(int32_t value);
 
+/* USB HID keyboard (available when SECD_FEATURE_HID is enabled). */
+#ifndef SECD_FEATURE_HID
+#define SECD_FEATURE_HID 0
+#endif
+#if SECD_FEATURE_HID
+void hal_usb_init(void);
+void hal_usb_start(void);
+int  hal_usb_serial_add(void);
+int  hal_usb_hid_add(void);
+void hal_hid_keyboard_tap(uint8_t modifier, uint8_t usage);
+int  hal_usb_serial_write(int port, uint8_t byte);
+int  hal_usb_serial_read(int port);
+int  hal_usb_serial_available(int port);
+#endif
+
 /* Flash (for firmware storage) */
 uint32_t hal_flash_size(void);
 int hal_flash_read(uint32_t addr, uint8_t *buf, size_t len);

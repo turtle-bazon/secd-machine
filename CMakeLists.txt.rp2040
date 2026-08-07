@@ -54,9 +54,10 @@ string(REPLACE "," ";" _SECD_FEATURES "${SECD_FEATURES}")
 # Initialize pico-sdk
 pico_sdk_init()
 
-# Source files
+# CherryUSB device stack (vendored). CDC-ACM console + HID keyboard.
 set(SOURCES
     src/rp2040/main.cpp
+    src/rp2040/usb.cpp
     src/core/heap.cpp
     src/core/gc.cpp
     src/core/machine.cpp
@@ -64,11 +65,18 @@ set(SOURCES
     src/core/primitives.cpp
     src/core/symbols.cpp
     src/hal/rp2040.cpp
+    third_party/cherryusb/core/usbd_core.c
+    third_party/cherryusb/class/cdc/usbd_cdc_acm.c
+    third_party/cherryusb/class/hid/usbd_hid.c
+    third_party/cherryusb/port/rp2040/usb_dc_rp2040.c
 )
 
 # Create executable
 add_executable(secd-machine ${SOURCES})
 target_compile_definitions(secd-machine PRIVATE SECD_DEBUG_BUILD=$<BOOL:${SECD_DEBUG_BUILD}>)
+# The vendored CherryUSB composite (CDC console + HID keyboard) is always
+# linked into this firmware, so advertise the HID primitive.
+target_compile_definitions(secd-machine PRIVATE SECD_FEATURE_HID=1)
 
 # Machine version + enabled features, surfaced to the debug serial banner.
 # Keep SECD_MACHINE_VERSION in sync with secd-lisp/secd-lisp.asd :version.
@@ -91,6 +99,13 @@ endforeach()
 target_include_directories(secd-machine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_BINARY_DIR}/cxx-shim
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/rp2040
+    third_party/cherryusb
+    third_party/cherryusb/common
+    third_party/cherryusb/core
+    third_party/cherryusb/port
+    third_party/cherryusb/class/cdc
+    third_party/cherryusb/class/hid
 )
 
 # Link libraries
@@ -106,9 +121,10 @@ target_link_libraries(secd-machine
 # GCC 9.3.0 doesn't support -nostdlib++, use dummy libstdc++.a instead
 target_link_directories(secd-machine PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
-# Enable USB output, disable UART output
-pico_enable_stdio_usb(secd-machine 1)
+# USB is provided by the vendored CherryUSB stack (composite CDC console +
+# HID keyboard); the pico-sdk stdio USB (TinyUSB) layer is NOT used.
 pico_enable_stdio_uart(secd-machine 0)
+pico_enable_stdio_usb(secd-machine 0)
 
 # Create UF2 file
 pico_add_uf2_output(secd-machine)

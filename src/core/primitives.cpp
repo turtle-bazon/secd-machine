@@ -211,6 +211,9 @@ secd_value_t prim_atom(secd_heap_t *heap, secd_value_t args) {
 #ifndef SECD_FEATURE_UART
 #define SECD_FEATURE_UART 0
 #endif
+#ifndef SECD_FEATURE_HID
+#define SECD_FEATURE_HID 0
+#endif
 
 /* Max segments a single wave-play call can drive (durations in 100ns ticks). */
 #define SECD_WAVE_MAX_SEGMENTS 512
@@ -251,6 +254,56 @@ secd_value_t prim_uart_read(secd_heap_t *heap, secd_value_t args) {
     (void)heap;
     (void)args;
     return secd_make_fixnum(hal_serial_read());
+}
+#endif
+
+#if SECD_FEATURE_HID
+secd_value_t prim_usb_init(secd_heap_t *heap, secd_value_t args) {
+    (void)heap; (void)args;
+    hal_usb_init();
+    return SECD_NIL;
+}
+
+secd_value_t prim_usb_start(secd_heap_t *heap, secd_value_t args) {
+    (void)heap; (void)args;
+    hal_usb_start();
+    return SECD_NIL;
+}
+
+secd_value_t prim_usb_serial_add(secd_heap_t *heap, secd_value_t args) {
+    (void)heap; (void)args;
+    return secd_make_fixnum((int16_t)hal_usb_serial_add());
+}
+
+secd_value_t prim_usb_hid_add(secd_heap_t *heap, secd_value_t args) {
+    (void)heap; (void)args;
+    return secd_make_fixnum((int16_t)hal_usb_hid_add());
+}
+
+secd_value_t prim_hid_key(secd_heap_t *heap, secd_value_t args) {
+    uint8_t modifier = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
+    uint8_t usage = (uint8_t)secd_fixnum_value(get_arg2(heap, args));
+    hal_hid_keyboard_tap(modifier, usage);
+    return SECD_NIL;
+}
+
+secd_value_t prim_serial_write(secd_heap_t *heap, secd_value_t args) {
+    (void)heap;
+    int port = (int)secd_fixnum_value(get_arg1(heap, args));
+    uint8_t byte = (uint8_t)secd_fixnum_value(get_arg2(heap, args));
+    return secd_make_fixnum((int16_t)hal_usb_serial_write(port, byte));
+}
+
+secd_value_t prim_serial_read(secd_heap_t *heap, secd_value_t args) {
+    (void)heap;
+    int port = (int)secd_fixnum_value(get_arg1(heap, args));
+    return secd_make_fixnum((int16_t)hal_usb_serial_read(port));
+}
+
+secd_value_t prim_serial_avail(secd_heap_t *heap, secd_value_t args) {
+    (void)heap;
+    int port = (int)secd_fixnum_value(get_arg1(heap, args));
+    return secd_make_fixnum((int16_t)hal_usb_serial_available(port));
 }
 #endif
 
@@ -344,4 +397,18 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
     secd_register_prim(registry, "%adc-read", prim_adc_read);
     secd_register_prim(registry, "%pwm-write", prim_pwm_write);
     secd_register_prim(registry, "%wave-play", prim_wave_play);
+#if SECD_FEATURE_HID
+    /* Registered last so the base primitive table is unchanged on boards
+       without USB (else every following id would shift). Lisp builds the
+       interface set with the factory primitives then calls %usb-start to
+       enumerate; the CDC console is always part of the device. */
+    secd_register_prim(registry, "%hid-key", prim_hid_key);
+    secd_register_prim(registry, "%usb-init", prim_usb_init);
+    secd_register_prim(registry, "%usb-start", prim_usb_start);
+    secd_register_prim(registry, "%usb-serial-add", prim_usb_serial_add);
+    secd_register_prim(registry, "%usb-hid-add", prim_usb_hid_add);
+    secd_register_prim(registry, "%serial-write", prim_serial_write);
+    secd_register_prim(registry, "%serial-read", prim_serial_read);
+    secd_register_prim(registry, "%serial-avail", prim_serial_avail);
+#endif
 }

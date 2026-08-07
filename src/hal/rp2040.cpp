@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 #include "hal/rp2040.h"
+#include "usb.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -92,7 +93,11 @@ int hal_gpio_init(uint8_t pin, uint8_t mode) {
     if (mode == HAL_GPIO_OUTPUT) {
         gpio_set_dir(pin, GPIO_OUT);
     } else {
+        /* Input with internal pull-up, so an active-low button (pin to GND)
+         * reads a stable 1 when released and 0 when pressed, regardless of
+         * the boot hold-all-low state. */
         gpio_set_dir(pin, GPIO_IN);
+        gpio_pull_up(pin);
     }
     return 0;
 }
@@ -134,18 +139,56 @@ int hal_serial_available(void) {
 }
 #endif
 
-/* String output */
+/* String output - routes to the USB CDC console (instance 0). */
 void hal_print(const char *str) {
-    printf("%s", str);
+    secd_console_write((const uint8_t *)str, strlen(str));
 }
 
 void hal_println(const char *str) {
-    printf("%s\n", str);
+    secd_console_write((const uint8_t *)str, strlen(str));
+    secd_console_write((const uint8_t *)"\n", 1);
 }
 
 void hal_print_int(int32_t value) {
-    printf("%d", value);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", (int)value);
+    secd_console_write((const uint8_t *)buf, strlen(buf));
 }
+
+/* USB composite device: console always; serial + HID added from Lisp before start */
+#if SECD_FEATURE_HID
+void hal_usb_init(void) {
+    secd_usb_init();
+}
+
+void hal_usb_start(void) {
+    secd_usb_start();
+}
+
+int hal_usb_serial_add(void) {
+    return secd_usb_serial_add();
+}
+
+int hal_usb_hid_add(void) {
+    return secd_usb_hid_add();
+}
+
+void hal_hid_keyboard_tap(uint8_t modifier, uint8_t usage) {
+    secd_hid_keyboard_tap(modifier, usage);
+}
+
+int hal_usb_serial_write(int port, uint8_t byte) {
+    return (int)secd_serial_write(port, &byte, 1);
+}
+
+int hal_usb_serial_read(int port) {
+    return secd_serial_read(port);
+}
+
+int hal_usb_serial_available(int port) {
+    return secd_serial_available(port);
+}
+#endif
 
 /* Flash */
 uint32_t hal_flash_size(void) {

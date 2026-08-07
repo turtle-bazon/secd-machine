@@ -25,5 +25,12 @@
         "pwm",
         "wifi",
         "timer"
-    ]
+    ],
+    "usb": {
+        "device": true,
+        "controller": "serial-jtag",
+        "cdc": { "max_ports": 1, "device": true },
+        "hid": { "device": false },
+        "note": "ESP32-C3 USB is a fixed-function Serial/JTAG controller: one CDC serial port, no HID. HID primitives (%hid-*) will not compile."
+    }
 }

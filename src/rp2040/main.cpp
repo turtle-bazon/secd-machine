@@ -16,11 +16,12 @@
 #include "secd/heap.h"
 #include "secd/bytecode.h"
 #include "hal/rp2040.h"
+#include "usb.h"
 #include "pico/stdlib.h"
-#include "pico/stdio_usb.h"
 #include "hardware/flash.h"
 #include <cstdio>
 #include <cstring>
+#include <stdarg.h>
 
 /* Heap: ~80KB (after TinyUSB + pico-sdk take their share of 264KB RAM) */
 #define HEAP_OBJECTS 4095   /* 12-bit handle index limit */
@@ -37,7 +38,19 @@ static secd_heap_t heap;
 static secd_machine_t machine;
 
 #if SECD_DEBUG_BUILD
-#define SECD_INFO(...) printf(__VA_ARGS__)
+/* Debug boots its own USB console, prints startup info, then tears it down so
+ * the Lisp program can re-initialize USB (%usb-init/%usb-start) with the full
+ * factory. This guarantees the boot banner is seen even if Lisp never starts
+ * USB. */
+static void secd_info(const char *fmt, ...) {
+    char buf[192];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    secd_console_write((const uint8_t *)buf, strlen(buf));
+}
+#define SECD_INFO(...) secd_info(__VA_ARGS__)
 #define SECD_WAIT_MS(ms) sleep_ms(ms)
 #else
 #define SECD_INFO(...) ((void)0)
@@ -75,30 +88,44 @@ static int load_bytecode(void) {
     SECD_INFO("Bytecode v%d.%d, code=%d, const=%d, sym=%d\n",
               version_major, version_minor, code_size, const_size, sym_size);
 
+    /* From here the Lisp program takes over USB: tear down the debug console
+     * so its %usb-init/%usb-start can rebuild the factory fresh. */
+#if SECD_DEBUG_BUILD
+    SECD_INFO("Deinitializing boot console, Lisp takes over USB.\n");
+    secd_usb_deinit();
+#endif
+
     /* Execute bytecode (skip header) */
     return secd_execute(&machine, ptr + header_size, code_size + const_size);
 }
 
+/* Hold every GPIO at a defined low level from the first instruction so that
+ * peripherals wired to a floating data line (e.g. a WS2812 LED on GPIO16) do
+ * not latch garbage during boot, before the bytecode configures the pin.
+ * Pins the bytecode later needs are re-initialized by %gpio-init.
+ */
+static void hold_all_gpios_low(void) {
+    for (int pin = 0; pin < 30; pin++) {
+        gpio_init(pin);
+        gpio_pull_down(pin);
+    }
+}
+
 /* Main entry point */
 int main(void) {
-    /* Bring up USB CDC for both builds. Debug then prints a banner (and waits
-       briefly for host enumeration); release uses USB too so that SECD-Lisp
-       programs can drive serial/mass-storage/other TinyUSB devices, but emits
-       no debug output. Keeping stdio_init_all() unconditional also keeps the
-       TinyUSB stack linked (it runs tud_task() on a periodic alarm). */
-    stdio_init_all();
+    /* Hold all GPIOs low before anything else (stdio, heap, VM): a WS2812 on
+       a floating data line would otherwise re-latch stale/garbage frames
+       until the bytecode's %gpio-init drives the pin. */
+    hold_all_gpios_low();
 
 #if SECD_DEBUG_BUILD
-    {
-        /* Wait for the host to enumerate before printing. Waiting on
-           stdio_usb_connected() (instead of a blind sleep) keeps the startup
-           banner from being missed if the terminal is already open. */
-        const uint32_t deadline = to_ms_since_boot(get_absolute_time()) + 5000;
-        while (!stdio_usb_connected() &&
-               to_ms_since_boot(get_absolute_time()) < deadline) {
-            sleep_ms(50);
-        }
-        sleep_ms(500);
+    /* Debug boots its own USB console first so the banner is always printed,
+       independently of whether Lisp later starts USB. */
+    secd_usb_init();
+    secd_usb_start();
+    secd_console_write((const uint8_t *)"Waiting for host console...\n", 29);
+    while (!secd_console_ready()) {
+        sleep_ms(20);
     }
 
     SECD_INFO("SECD Machine v%s\n", SECD_MACHINE_VERSION);

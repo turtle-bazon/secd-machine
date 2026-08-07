@@ -24,5 +24,13 @@
         "adc",
         "pwm",
         "timer"
-    ]
+    ],
+    "usb": {
+        "device": true,
+        "controller": "otg",
+        "cdc": { "max_ports": 6, "device": true },
+        "serial": { "max_ports": 5, "device": true },
+        "hid": { "device": true },
+        "note": "RP2040 has a native full-speed USB controller. The firmware builds one CDC console (print/format) plus up to 5 Lisp-added serial consoles and a HID keyboard; the interface set is chosen by Lisp before %usb-start."
+    }
 }

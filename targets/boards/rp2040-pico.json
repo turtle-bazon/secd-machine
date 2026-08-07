@@ -31,6 +31,14 @@
         "%millis": {"id": 22, "args": 0},
         "%adc-read": {"id": 23, "args": 1},
         "%pwm-write": {"id": 24, "args": 2},
-        "%wave-play": {"id": 25, "args": 2}
+        "%wave-play": {"id": 25, "args": 2},
+        "%hid-key": {"id": 26, "args": 2},
+        "%usb-init": {"id": 27, "args": 0},
+        "%usb-start": {"id": 28, "args": 0},
+        "%usb-serial-add": {"id": 29, "args": 0},
+        "%usb-hid-add": {"id": 30, "args": 0},
+        "%serial-write": {"id": 31, "args": 2},
+        "%serial-read": {"id": 32, "args": 1},
+        "%serial-avail": {"id": 33, "args": 1}
     }
 }
