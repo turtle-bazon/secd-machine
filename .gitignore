@@ -1,7 +1,7 @@
 # build
 build/
 build-*/
-platforms/esp32/build/
+platforms/esp32/build*/
 *.o
 *.a
 

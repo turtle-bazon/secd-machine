@@ -16,6 +16,16 @@
 #define SECD_MACHINE_VERSION "0.0.1.0"
 #endif
 
+#ifndef SECD_DEBUG_BUILD
+#define SECD_DEBUG_BUILD 1
+#endif
+
+#if SECD_DEBUG_BUILD
+#define SECD_INFO(...) printf(__VA_ARGS__)
+#else
+#define SECD_INFO(...) ((void)0)
+#endif
+
 extern "C" const uint8_t secd_bytecode[];
 extern "C" const uint32_t secd_bytecode_len;
 
@@ -25,23 +35,23 @@ static secd_machine_t machine;
 extern "C" int secd_start(void) {
     hal_init();
 
-    printf("SECD Machine v%s\n", SECD_MACHINE_VERSION);
-    printf("Platform: ESP32-C3\n");
+    SECD_INFO("SECD Machine v%s\n", SECD_MACHINE_VERSION);
+    SECD_INFO("Platform: ESP32-C3\n");
 
     if (secd_heap_init(&heap, HEAP_OBJECTS) != 0) {
-        printf("Heap init failed\n");
+        SECD_INFO("Heap init failed\n");
         return 1;
     }
     if (secd_machine_init(&machine, &heap) != 0) {
-        printf("Machine init failed\n");
+        SECD_INFO("Machine init failed\n");
         return 1;
     }
 
     /* Bytecode is merged into the app image as code+const (no "SECD" header). */
-    printf("Bytecode: %u bytes\n", (unsigned)secd_bytecode_len);
+    SECD_INFO("Bytecode: %u bytes\n", (unsigned)secd_bytecode_len);
 
     secd_execute(&machine, secd_bytecode, secd_bytecode_len);
-    printf("Done: steps=%u error=%u\n", (unsigned)machine.steps, (unsigned)machine.error);
+    SECD_INFO("Done: steps=%u error=%u\n", (unsigned)machine.steps, (unsigned)machine.error);
 
     for (;;) {
         hal_delay(1000);
