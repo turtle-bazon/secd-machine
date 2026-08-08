@@ -1,7 +1,7 @@
 # SECD VM component: compiles the shared core + ESP32 HAL into the app.
-# Sources live in the repo, referenced from the component dir (../../.. = repo).
-set(SECD_SRC_DIR "${CMAKE_CURRENT_LIST_DIR}/../../../src")
-set(SECD_INC_DIR "${CMAKE_CURRENT_LIST_DIR}/../../../include")
+# Sources live in the repo, referenced from the component dir (../../../../ = repo).
+set(SECD_SRC_DIR "${CMAKE_CURRENT_LIST_DIR}/../../../../src")
+set(SECD_INC_DIR "${CMAKE_CURRENT_LIST_DIR}/../../../../include")
 
 idf_component_register(
     SRCS
