@@ -1,0 +1,36 @@
+{
+    "chip": "esp32s3",
+    "description": "Espressif ESP32-S3 dual-core Xtensa LX7 microcontroller @ 240MHz",
+    "output": {
+        "format": "uf2",
+        "family": "esp32s3"
+    },
+    "memory": {
+        "flash_size": 8388608,
+        "sram_size": 524288
+    },
+    "constraints": {
+        "max_fixnum": 2147483647,
+        "min_fixnum": -2147483648,
+        "bignum_support": true,
+        "max_string_length": 1024,
+        "max_list_depth": 128
+    },
+    "capabilities": [
+        "gpio",
+        "uart",
+        "spi",
+        "i2c",
+        "adc",
+        "pwm",
+        "wifi",
+        "timer"
+    ],
+    "usb": {
+        "device": true,
+        "controller": "usb-otg",
+        "cdc": { "max_ports": 1, "device": true },
+        "hid": { "device": true },
+        "note": "ESP32-S3 has native USB-OTG (plus the fixed Serial/JTAG controller). Unlike ESP32-C3 it can expose CDC and HID keyboards over USB; HID primitives (%hid-*) are hardware-supported but not yet compiled into the firmware."
+    }
+}

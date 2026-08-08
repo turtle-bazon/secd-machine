@@ -23,7 +23,7 @@ LIB = libsecd.a
 OUTPUT_DIR = output
 # Scratch dir for generated target metadata (zipped into .machine, not delivered)
 META_DIR = $(OUTPUT_DIR)/.build
-TARGETS = rp2040-pico rp2040-zero rp2350-zero rp2350-beetle seeed-xiao-samd21 esp32c3-supermini
+TARGETS = rp2040-pico rp2040-zero rp2350-zero rp2350-beetle seeed-xiao-samd21 esp32c3-supermini stamp-s3a
 
 # Pico SDK
 PICO_SDK_PATH ?= /tmp/pico-sdk
@@ -86,6 +86,19 @@ ESP32C3_SRCS = src/hal/esp32.cpp src/core/heap.cpp src/core/gc.cpp src/core/mach
 	$(ESP32C3_DIR)/components/secd/secd_bytecode.cpp \
 	$(ESP32C3_DIR)/CMakeLists.txt $(ESP32C3_DIR)/sdkconfig.defaults \
 	$(ESP32C3_DIR)/components/secd/CMakeLists.txt
+
+# ESP32-S3 Stamp-S3A (ESP-IDF, dual-core Xtensa LX7). Bytecode merged into the app image.
+ESP32S3_DIR = platforms/esp32s3
+ESP32S3_BUILD = $(ESP32S3_DIR)/build
+ESP32S3_BUILD_RELEASE = $(ESP32S3_DIR)/build-release
+ESP32S3_BIN = $(ESP32S3_BUILD)/secd_machine.bin
+ESP32S3_BIN_RELEASE = $(ESP32S3_BUILD_RELEASE)/secd_machine.bin
+ESP32S3_SRCS = src/hal/esp32.cpp src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp \
+	src/core/bytecode.cpp src/core/primitives.cpp src/core/symbols.cpp \
+	$(ESP32S3_DIR)/components/secd/secd_start.cpp \
+	$(ESP32S3_DIR)/components/secd/secd_bytecode.cpp \
+	$(ESP32S3_DIR)/CMakeLists.txt $(ESP32S3_DIR)/sdkconfig.defaults \
+	$(ESP32S3_DIR)/components/secd/CMakeLists.txt
 
 # Board features (peripherals linked into the firmware), comma-separated.
 # The board's enabled capabilities; e.g. a bare chip target would build
@@ -336,6 +349,31 @@ $(OUTPUT_DIR)/esp32c3-supermini.release.machine: $(ESP32C3_BIN_RELEASE) $(META_D
 		zf.close()"
 	@echo "Created $@ (firmware.bin + metadata.json, release)"
 
+# ESP32-S3 Stamp-S3A: build firmware with ESP-IDF, then zip .machine.
+$(ESP32S3_BIN): $(ESP32S3_SRCS)
+	@. $(ESP_IDF_DIR)/export.sh >/dev/null 2>&1 && cd $(ESP32S3_DIR) && idf.py build >/dev/null
+
+$(ESP32S3_BIN_RELEASE): $(ESP32S3_SRCS)
+	@. $(ESP_IDF_DIR)/export.sh >/dev/null 2>&1 && cd $(ESP32S3_DIR) && idf.py -B build-release -DSECD_DEBUG_BUILD=0 build >/dev/null
+
+$(OUTPUT_DIR)/stamp-s3a.machine: $(ESP32S3_BIN) $(META_DIR)/stamp-s3a.metadata.json
+	@mkdir -p $(OUTPUT_DIR)
+	@python3 -c "import zipfile; \
+		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
+		zf.write('$(ESP32S3_BIN)', 'firmware.bin'); \
+		zf.write('$(META_DIR)/stamp-s3a.metadata.json', 'metadata.json'); \
+		zf.close()"
+	@echo "Created $@ (firmware.bin + metadata.json)"
+
+$(OUTPUT_DIR)/stamp-s3a.release.machine: $(ESP32S3_BIN_RELEASE) $(META_DIR)/stamp-s3a.metadata.json
+	@mkdir -p $(OUTPUT_DIR)
+	@python3 -c "import zipfile; \
+		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
+		zf.write('$(ESP32S3_BIN_RELEASE)', 'firmware.bin'); \
+		zf.write('$(META_DIR)/stamp-s3a.metadata.json', 'metadata.json'); \
+		zf.close()"
+	@echo "Created $@ (firmware.bin + metadata.json, release)"
+
 # Merge a compiled Lisp program into the ESP32-C3 app image.
 # $$1 = example source, $$2 = target board name.
 define ESP32C3-MERGE
@@ -352,10 +390,27 @@ endef
 esp32c3-blink: $(OUTPUT_DIR)/esp32c3-supermini.machine
 	$(call ESP32C3-MERGE,$(SECD_LISP_DIR)/examples/rp2040-blink.lisp,/tmp/esp32c3-blink.bin)
 
+# Merge a compiled Lisp program into the ESP32-S3 app image.
+# $$1 = example source, $$2 = target board name.
+define ESP32S3-MERGE
+	@echo "Compiling $(1) for stamp-s3a and merging into the app image..."
+	@sbcl --non-interactive --load $(SECD_LISP_ASD) \
+		--eval '(asdf:load-system :secd-lisp)' \
+		--eval '(secd-lisp:write-bytecode (secd-lisp:secd-compile-file "$(1)" :target :stamp-s3a) "$(2)")' \
+		|| (echo "compile failed"; exit 1)
+	@python3 -c "import sys; d=open('$(2)','rb').read(); c=', '.join('0x%02x'%b for b in d); open('$(ESP32S3_DIR)/components/secd/secd_bytecode.cpp','w').write('/* generated */\\n#include <stdint.h>\\nextern \"C\" const uint8_t secd_bytecode[] = { '+c+' };\\nextern \"C\" const uint32_t secd_bytecode_len = '+str(len(d))+';\\n')"
+	@. $(ESP_IDF_DIR)/export.sh >/dev/null 2>&1 && cd $(ESP32S3_DIR) && idf.py build >/dev/null
+	@echo "Merged $(1) into $(ESP32S3_BIN)"
+endef
+
+esp32s3-blink: $(OUTPUT_DIR)/stamp-s3a.machine
+	$(call ESP32S3-MERGE,$(SECD_LISP_DIR)/examples/rp2040-blink.lisp,/tmp/esp32s3-blink.bin)
+
 clean:
 	rm -f $(OBJS) $(TEST_OBJS) $(LIB) run_tests
 	rm -rf $(OUTPUT_DIR)
 	rm -rf $(PICO_BUILD_DIR) $(PICO_BUILD_DIR_RELEASE) \
 		$(RP2040_ZERO_DIR) $(RP2040_ZERO_DIR_RELEASE) $(RP2350_ZERO_DIR) \
 		$(RP2350_ZERO_DIR_RELEASE) $(RP2350_BEETLE_DIR) $(RP2350_BEETLE_DIR_RELEASE) \
-		$(SAMD21_DIR) $(SAMD21_DIR_RELEASE) $(ESP32C3_BUILD) $(ESP32C3_BUILD_RELEASE)
+		$(SAMD21_DIR) $(SAMD21_DIR_RELEASE) $(ESP32C3_BUILD) $(ESP32C3_BUILD_RELEASE) \
+		$(ESP32S3_BUILD) $(ESP32S3_BUILD_RELEASE)

@@ -2,6 +2,7 @@
 build/
 build-*/
 platforms/esp32/build*/
+platforms/esp32s3/build*/
 *.o
 *.a
 
@@ -10,3 +11,4 @@ output/
 
 # ESP-IDF generated config
 platforms/esp32/sdkconfig
+platforms/esp32s3/sdkconfig

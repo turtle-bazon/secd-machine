@@ -1,0 +1,42 @@
+{
+    "name": "stamp-s3a",
+    "chip": "esp32s3",
+    "board": "M5Stack Stamp-S3A",
+    "description": "M5Stack Stamp-S3A module (ESP32-S3FN8, 8MB flash, dual-core Xtensa LX7 240MHz, USB-OTG, 23 GPIOs, RGB LED + user button on G0). No peripherals wired yet.",
+    "memory": {
+        "flash_size": 8388608,
+        "heap_size": 200000,
+        "stack_size": 16384,
+        "symbols_size": 512
+    },
+    "flash_layout": {
+        "firmware_addr": 0,
+        "firmware_size": 1572864,
+        "bytecode_addr": 1572864,
+        "bytecode_size": 1048576
+    },
+    "board_pins": {
+        "ws2812_pin": 21,
+        "led_pin": 21,
+        "user_button_pin": 0
+    },
+    "features": [
+        "gpio",
+        "uart",
+        "sleep",
+        "millis"
+    ],
+    "primitives": {
+        "%gpio-init": {"id": 15, "args": 2},
+        "%gpio-write": {"id": 16, "args": 2},
+        "%gpio-read": {"id": 17, "args": 1},
+        "%uart-init": {"id": 18, "args": 1},
+        "%uart-write": {"id": 19, "args": 1},
+        "%uart-read": {"id": 20, "args": 0},
+        "%sleep": {"id": 21, "args": 1},
+        "%millis": {"id": 22, "args": 0},
+        "%adc-read": {"id": 23, "args": 1},
+        "%pwm-write": {"id": 24, "args": 2},
+        "%wave-play": {"id": 25, "args": 2}
+    }
+}
