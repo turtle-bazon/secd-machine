@@ -34,42 +34,43 @@ PICO_TOOLCHAIN_M33 = $(PICO_SDK_PATH)/cmake/preload/toolchains/pico_arm_cortex_m
 
 # Per-board build config: build dir, toolchain file, pico board, header dirs.
 # RP2350 boards use the Cortex-M33 toolchain; RP2040 boards use M0+.
-PICO_BUILD_DIR ?= build-rp2040-pico
-PICO_BUILD_DIR_RELEASE = build-rp2040-pico-release
+PICO_BUILD_DIR ?= build/rp2040-pico
+PICO_BUILD_DIR_RELEASE = build/rp2040-pico-release
 PICO_BOARD ?= pico
 
 # RP2040 Zero (M0+, 2MB flash, WS2812 on GPIO16)
-RP2040_ZERO_DIR = build-rp2040-zero
-RP2040_ZERO_DIR_RELEASE = build-rp2040-zero-release
+RP2040_ZERO_DIR = build/rp2040-zero
+RP2040_ZERO_DIR_RELEASE = build/rp2040-zero-release
 RP2040_ZERO_TOOLCHAIN = $(PICO_TOOLCHAIN_M0PLUS)
 RP2040_ZERO_BOARD = waveshare_rp2040_zero
 
 # RP2350 Zero (M33, 4MB flash, WS2812 on GPIO16)
-RP2350_ZERO_DIR = build-rp2350-zero
+RP2350_ZERO_DIR = build/rp2350-zero
 RP2350_ZERO_TOOLCHAIN = $(PICO_TOOLCHAIN_M33)
 RP2350_ZERO_BOARD = waveshare_rp2350_zero
 
 # RP2350 Beast (M33, 2MB flash, LED on GPIO25). Custom header in board-headers/.
-RP2350_BEETLE_DIR = build-rp2350-beetle
+RP2350_BEETLE_DIR = build/rp2350-beetle
 RP2350_BEETLE_TOOLCHAIN = $(PICO_TOOLCHAIN_M33)
 RP2350_BEETLE_BOARD = dfrobot_beetle_rp2350
 RP2350_BEETLE_HEADERS = $(CURDIR)/board-headers/boards
 
 # Seeed XIAO SAMD21 (bare metal, Cortex-M0+)
-SAMD21_DIR = build-seed-xiao
+SAMD21_DIR = build/samd21
 SAMD21_CC = arm-none-eabi-g++
 SAMD21_CFLAGS = -mcpu=cortex-m0plus -mthumb -Os -ffunction-sections -fdata-sections \
 	-Wall -Wextra -Iinclude \
 	-DSECD_FEATURE_GPIO=1 -DSECD_FEATURE_UART=0 \
 	-DSECD_MACHINE_VERSION='"0.0.1.0"' -DSECD_FEATURES_STR='"gpio"'
-SAMD21_SRCS = src/samd21/main.cpp src/samd21/startup_samd21.cpp src/samd21/syscalls.cpp \
+SAMD21_SRCS = platforms/samd21/main.cpp platforms/samd21/startup_samd21.cpp \
+	platforms/samd21/syscalls.cpp \
 	src/hal/samd21.cpp \
 	src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp src/core/bytecode.cpp \
 	src/core/primitives.cpp src/core/symbols.cpp
 
 # ESP32-C3 SuperMini (ESP-IDF, single-core RISC-V). Bytecode merged into the app image.
 ESP_IDF_DIR ?= /home/turtle/esp/esp-idf
-ESP32C3_DIR = esp32-idf
+ESP32C3_DIR = platforms/esp32
 ESP32C3_BUILD = $(ESP32C3_DIR)/build
 ESP32C3_BIN = $(ESP32C3_BUILD)/secd_machine.bin
 ESP32C3_SRCS = src/hal/esp32.cpp src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp \
@@ -165,8 +166,7 @@ define RP2-CMAKE
 		echo "void __cxa_pure_virtual(void) {}" > /tmp/dummy.cpp && \
 		arm-none-eabi-g++ -c /tmp/dummy.cpp -o /tmp/dummy.o && \
 		arm-none-eabi-ar rcs libstdc++.a /tmp/dummy.o
-	@cp CMakeLists.txt.rp2040 CMakeLists.txt
-	@cd $(1) && cmake .. \
+	@cd $(1) && cmake -S ../../platforms/rp2 -B . \
 		-DCMAKE_TOOLCHAIN_FILE=$(2) \
 		-DPICO_SDK_PATH=$(PICO_SDK_PATH) \
 		-DPICO_BOARD=$(4) \
@@ -179,8 +179,9 @@ endef
 # Shared RP2 source list (RP2040 and RP2350 use the same firmware sources).
 # Depends on the sources so a core/HAL change triggers a CMake rebuild
 # (CMake itself re-tracks per-file deps; this just forces the build step).
-RP2040_SRCS = CMakeLists.txt.rp2040 \
-	src/rp2040/main.cpp src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp \
+RP2040_SRCS = platforms/rp2/CMakeLists.txt \
+	platforms/rp2/main.cpp platforms/rp2/usb.cpp \
+	src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp \
 	src/core/bytecode.cpp src/core/primitives.cpp src/core/symbols.cpp \
 	src/hal/rp2040.cpp
 
@@ -239,7 +240,7 @@ $(SAMD21_DIR)/secd-machine.elf: $(SAMD21_SRCS)
 	@arm-none-eabi-g++ -c $(SAMD21_DIR)/dummy.cpp -o $(SAMD21_DIR)/dummy.o
 	@arm-none-eabi-ar rcs $(SAMD21_DIR)/libstdc++.a $(SAMD21_DIR)/dummy.o
 	@$(SAMD21_CC) $(SAMD21_CFLAGS) $(SAMD21_SRCS) \
-		-Wl,-T,src/samd21/samd21g18a.ld -Wl,--gc-sections -nostartfiles \
+		-Wl,-T,platforms/samd21/samd21g18a.ld -Wl,--gc-sections -nostartfiles \
 		-L$(SAMD21_DIR) -lm -o $@
 
 $(SAMD21_DIR)/firmware.bin: $(SAMD21_DIR)/secd-machine.elf
@@ -331,5 +332,5 @@ clean:
 	rm -f $(OBJS) $(TEST_OBJS) $(LIB) run_tests
 	rm -rf $(OUTPUT_DIR)
 	rm -rf $(PICO_BUILD_DIR) $(PICO_BUILD_DIR_RELEASE) \
-		$(RP2040_ZERO_DIR) $(RP2350_ZERO_DIR) $(RP2350_BEETLE_DIR) \
-		$(SAMD21_DIR)
+		$(RP2040_ZERO_DIR) $(RP2040_ZERO_DIR_RELEASE) $(RP2350_ZERO_DIR) \
+		$(RP2350_BEETLE_DIR) $(SAMD21_DIR) $(ESP32C3_BUILD)

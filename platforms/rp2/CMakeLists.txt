@@ -56,19 +56,19 @@ pico_sdk_init()
 
 # CherryUSB device stack (vendored). CDC-ACM console + HID keyboard.
 set(SOURCES
-    src/rp2040/main.cpp
-    src/rp2040/usb.cpp
-    src/core/heap.cpp
-    src/core/gc.cpp
-    src/core/machine.cpp
-    src/core/bytecode.cpp
-    src/core/primitives.cpp
-    src/core/symbols.cpp
-    src/hal/rp2040.cpp
-    third_party/cherryusb/core/usbd_core.c
-    third_party/cherryusb/class/cdc/usbd_cdc_acm.c
-    third_party/cherryusb/class/hid/usbd_hid.c
-    third_party/cherryusb/port/rp2040/usb_dc_rp2040.c
+    main.cpp
+    usb.cpp
+    ../../src/core/heap.cpp
+    ../../src/core/gc.cpp
+    ../../src/core/machine.cpp
+    ../../src/core/bytecode.cpp
+    ../../src/core/primitives.cpp
+    ../../src/core/symbols.cpp
+    ../../src/hal/rp2040.cpp
+    ../../third_party/cherryusb/core/usbd_core.c
+    ../../third_party/cherryusb/class/cdc/usbd_cdc_acm.c
+    ../../third_party/cherryusb/class/hid/usbd_hid.c
+    ../../third_party/cherryusb/port/rp2040/usb_dc_rp2040.c
 )
 
 # Create executable
@@ -97,15 +97,15 @@ endforeach()
 
 # Include directories
 target_include_directories(secd-machine PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../include
     ${CMAKE_CURRENT_BINARY_DIR}/cxx-shim
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/rp2040
-    third_party/cherryusb
-    third_party/cherryusb/common
-    third_party/cherryusb/core
-    third_party/cherryusb/port
-    third_party/cherryusb/class/cdc
-    third_party/cherryusb/class/hid
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ../../third_party/cherryusb
+    ../../third_party/cherryusb/common
+    ../../third_party/cherryusb/core
+    ../../third_party/cherryusb/port
+    ../../third_party/cherryusb/class/cdc
+    ../../third_party/cherryusb/class/hid
 )
 
 # Link libraries
