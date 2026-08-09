@@ -181,9 +181,65 @@ int hal_i2c_write_read(uint8_t addr, const uint8_t *wdata, size_t wlen, uint8_t 
 #endif
 
 /* String output routed to the console. */
+#if SECD_FEATURE_HID
+/* USB HID builds route print/format output to the CDC-ACM console (port 0),
+ * mirroring the RP2040 HAL; the UART console (printf) stays for non-HID. */
+#include "usb.h"
+
+void hal_print(const char *str) {
+    secd_console_write((const uint8_t *)str, strlen(str));
+}
+
+void hal_println(const char *str) {
+    secd_console_write((const uint8_t *)str, strlen(str));
+    secd_console_write((const uint8_t *)"\n", 1);
+}
+
+void hal_print_int(int32_t value) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", (int)value);
+    secd_console_write((const uint8_t *)buf, strlen(buf));
+}
+#else
 void hal_print(const char *str) { printf("%s", str); }
 void hal_println(const char *str) { puts(str); }
 void hal_print_int(int32_t value) { printf("%d", (int)value); }
+#endif
+
+/* USB HID keyboard / CDC serial (available when SECD_FEATURE_HID is enabled). */
+#if SECD_FEATURE_HID
+void hal_usb_init(void) {
+    secd_usb_init();
+}
+
+void hal_usb_start(void) {
+    secd_usb_start();
+}
+
+int hal_usb_serial_add(void) {
+    return secd_usb_serial_add();
+}
+
+int hal_usb_hid_add(void) {
+    return secd_usb_hid_add();
+}
+
+void hal_hid_keyboard_tap(uint8_t modifier, uint8_t usage) {
+    secd_hid_keyboard_tap(modifier, usage);
+}
+
+int hal_usb_serial_write(int port, uint8_t byte) {
+    return (int)secd_serial_write(port, &byte, 1);
+}
+
+int hal_usb_serial_read(int port) {
+    return secd_serial_read(port);
+}
+
+int hal_usb_serial_available(int port) {
+    return secd_serial_available(port);
+}
+#endif
 
 /* Flash: not used (bytecode is merged into the app image). */
 uint32_t hal_flash_size(void) { return 4194304; }

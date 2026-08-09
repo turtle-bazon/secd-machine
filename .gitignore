@@ -3,6 +3,7 @@ build/
 build-*/
 platforms/esp32/build*/
 platforms/esp32s3/build*/
+managed_components/
 *.o
 *.a
 

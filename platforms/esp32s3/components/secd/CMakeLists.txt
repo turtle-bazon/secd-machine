@@ -14,19 +14,22 @@ idf_component_register(
         "${SECD_SRC_DIR}/hal/esp32.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/secd_start.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/secd_bytecode.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/usb.cpp"
     INCLUDE_DIRS
         "${SECD_INC_DIR}"
+        "${CMAKE_CURRENT_LIST_DIR}"
     PRIV_REQUIRES
-        esp_driver_gpio esp_driver_uart esp_driver_i2c esp_timer esp_system freertos
+        cherry-embedded__cherryusb esp_driver_gpio esp_driver_uart esp_driver_i2c esp_timer esp_system freertos
 )
 
 # Feature macros must match this board's primitive IDs in the metadata.
-# stamp-s3a enables GPIO + UART + I2C (i2c ids 26-29; USB was deferred).
+# stamp-s3a enables GPIO + UART + I2C + USB (i2c ids 26-29, usb/hid ids 30-37).
 # SECD_DEBUG_BUILD = 1: print startup banner/waits; 0 = silent (release).
 option(SECD_DEBUG_BUILD "Print startup banner in debug builds" ON)
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     SECD_FEATURE_GPIO=1
     SECD_FEATURE_UART=1
     SECD_FEATURE_I2C=1
-    SECD_FEATURES_STR="gpio,uart,i2c"
+    SECD_FEATURE_HID=1
+    SECD_FEATURES_STR="gpio,uart,i2c,usb"
     SECD_DEBUG_BUILD=$<BOOL:${SECD_DEBUG_BUILD}>)
