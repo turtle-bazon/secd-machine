@@ -214,6 +214,9 @@ secd_value_t prim_atom(secd_heap_t *heap, secd_value_t args) {
 #ifndef SECD_FEATURE_HID
 #define SECD_FEATURE_HID 0
 #endif
+#ifndef SECD_FEATURE_I2C
+#define SECD_FEATURE_I2C 0
+#endif
 
 /* Max segments a single wave-play call can drive (durations in 100ns ticks). */
 #define SECD_WAVE_MAX_SEGMENTS 512
@@ -254,6 +257,66 @@ secd_value_t prim_uart_read(secd_heap_t *heap, secd_value_t args) {
     (void)heap;
     (void)args;
     return secd_make_fixnum(hal_serial_read());
+}
+#endif
+
+#if SECD_FEATURE_I2C
+secd_value_t prim_i2c_init(secd_heap_t *heap, secd_value_t args) {
+    (void)heap;
+    uint8_t sda = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
+    uint8_t scl = (uint8_t)secd_fixnum_value(get_arg2(heap, args));
+    /* Frequency is in kHz (fits the 12-bit fixnum; 100000 Hz would wrap). */
+    uint32_t hz = (uint32_t)secd_fixnum_value(get_arg3(heap, args)) * 1000u;
+    return secd_make_fixnum((int16_t)hal_i2c_init(sda, scl, hz));
+}
+
+secd_value_t prim_i2c_write(secd_heap_t *heap, secd_value_t args) {
+    uint8_t addr = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
+    secd_value_t node = get_arg2(heap, args);
+    uint8_t buf[32];
+    int n = 0;
+    while (secd_is_pair(node) && n < 32) {
+        buf[n++] = (uint8_t)secd_fixnum_value(secd_car(heap, node));
+        node = secd_cdr(heap, node);
+    }
+    return secd_make_fixnum((int16_t)hal_i2c_write(addr, buf, (size_t)n));
+}
+
+secd_value_t prim_i2c_read(secd_heap_t *heap, secd_value_t args) {
+    uint8_t addr = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
+    int16_t count = secd_fixnum_value(get_arg2(heap, args));
+    if (count < 1) count = 1;
+    if (count > 32) count = 32;
+    uint8_t buf[32];
+    int got = hal_i2c_read(addr, buf, (size_t)count);
+    if (got < 0) return SECD_NIL;
+    secd_value_t result = SECD_NIL;
+    for (int i = got - 1; i >= 0; i--) {
+        result = secd_cons(heap, secd_make_fixnum((int16_t)buf[i]), result);
+    }
+    return result;
+}
+
+secd_value_t prim_i2c_write_read(secd_heap_t *heap, secd_value_t args) {
+    uint8_t addr = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
+    secd_value_t node = get_arg2(heap, args);
+    uint8_t wbuf[32];
+    int wn = 0;
+    while (secd_is_pair(node) && wn < 32) {
+        wbuf[wn++] = (uint8_t)secd_fixnum_value(secd_car(heap, node));
+        node = secd_cdr(heap, node);
+    }
+    int16_t count = secd_fixnum_value(get_arg3(heap, args));
+    if (count < 1) count = 1;
+    if (count > 32) count = 32;
+    uint8_t rbuf[32];
+    int got = hal_i2c_write_read(addr, wbuf, (size_t)wn, rbuf, (size_t)count);
+    if (got < 0) return SECD_NIL;
+    secd_value_t result = SECD_NIL;
+    for (int i = got - 1; i >= 0; i--) {
+        result = secd_cons(heap, secd_make_fixnum((int16_t)rbuf[i]), result);
+    }
+    return result;
 }
 #endif
 
@@ -397,6 +460,15 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
     secd_register_prim(registry, "%adc-read", prim_adc_read);
     secd_register_prim(registry, "%pwm-write", prim_pwm_write);
     secd_register_prim(registry, "%wave-play", prim_wave_play);
+#if SECD_FEATURE_I2C
+    /* Registered before USB so the I2C ids (26-29) are identical on every
+       board that exposes them, regardless of whether the board also has USB
+       peripheral primitives (ids 30+). */
+    secd_register_prim(registry, "%i2c-init", prim_i2c_init);
+    secd_register_prim(registry, "%i2c-write", prim_i2c_write);
+    secd_register_prim(registry, "%i2c-read", prim_i2c_read);
+    secd_register_prim(registry, "%i2c-write-read", prim_i2c_write_read);
+#endif
 #if SECD_FEATURE_HID
     /* Registered last so the base primitive table is unchanged on boards
        without USB (else every following id would shift). Lisp builds the

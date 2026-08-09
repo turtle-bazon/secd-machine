@@ -24,5 +24,38 @@
         "adc",
         "pwm",
         "timer"
-    ]
+    ],
+    "primitives": {
+        "%gpio-init": {"id": 15, "args": 2},
+        "%gpio-write": {"id": 16, "args": 2},
+        "%gpio-read": {"id": 17, "args": 1},
+        "%uart-init": {"id": 18, "args": 1},
+        "%uart-write": {"id": 19, "args": 1},
+        "%uart-read": {"id": 20, "args": 0},
+        "%sleep": {"id": 21, "args": 1},
+        "%millis": {"id": 22, "args": 0},
+        "%adc-read": {"id": 23, "args": 1},
+        "%pwm-write": {"id": 24, "args": 2},
+        "%wave-play": {"id": 25, "args": 2},
+        "%i2c-init": {"id": 26, "args": 3},
+        "%i2c-write": {"id": 27, "args": 2},
+        "%i2c-read": {"id": 28, "args": 2},
+        "%i2c-write-read": {"id": 29, "args": 3},
+        "%hid-key": {"id": 30, "args": 2},
+        "%usb-init": {"id": 31, "args": 0},
+        "%usb-start": {"id": 32, "args": 0},
+        "%usb-serial-add": {"id": 33, "args": 0},
+        "%usb-hid-add": {"id": 34, "args": 0},
+        "%serial-write": {"id": 35, "args": 2},
+        "%serial-read": {"id": 36, "args": 1},
+        "%serial-avail": {"id": 37, "args": 1}
+    },
+    "usb": {
+        "device": true,
+        "controller": "otg",
+        "cdc": { "max_ports": 6, "device": true },
+        "serial": { "max_ports": 5, "device": true },
+        "hid": { "device": true },
+        "note": "RP2350 builds the same USB composite as RP2040 (CDC console + HID keyboard); the interface set is chosen by Lisp before %usb-start."
+    }
 }

@@ -17,15 +17,16 @@ idf_component_register(
     INCLUDE_DIRS
         "${SECD_INC_DIR}"
     PRIV_REQUIRES
-        esp_driver_gpio esp_driver_uart esp_timer esp_system freertos
+        esp_driver_gpio esp_driver_uart esp_driver_i2c esp_timer esp_system freertos
 )
 
 # Feature macros must match this board's primitive IDs in the metadata.
-# esp32c3-supermini enables GPIO + UART (uart ids 18-20).
+# esp32c3-supermini enables GPIO + UART + I2C (i2c ids 26-29, no USB).
 # SECD_DEBUG_BUILD = 1: print startup banner/waits; 0 = silent (release).
 option(SECD_DEBUG_BUILD "Print startup banner in debug builds" ON)
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     SECD_FEATURE_GPIO=1
     SECD_FEATURE_UART=1
-    SECD_FEATURES_STR="gpio,uart"
+    SECD_FEATURE_I2C=1
+    SECD_FEATURES_STR="gpio,uart,i2c"
     SECD_DEBUG_BUILD=$<BOOL:${SECD_DEBUG_BUILD}>)

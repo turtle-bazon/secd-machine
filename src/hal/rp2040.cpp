@@ -37,6 +37,9 @@
 #if SECD_FEATURE_UART
 #include "hardware/uart.h"
 #endif
+#if SECD_FEATURE_I2C
+#include "hardware/i2c.h"
+#endif
 #include "hardware/flash.h"
 #include "hardware/timer.h"
 #include "hardware/watchdog.h"
@@ -136,6 +139,41 @@ uint8_t hal_serial_read(void) {
 
 int hal_serial_available(void) {
     return uart_is_readable(uart0) ? 1 : 0;
+}
+#endif
+
+/* I2C master (board feature): single bus on I2C0, pins as given. */
+#if SECD_FEATURE_I2C
+static i2c_inst_t *hal_i2c_bus = NULL;
+
+int hal_i2c_init(uint8_t sda_pin, uint8_t scl_pin, uint32_t hz) {
+    hal_i2c_bus = i2c0;
+    i2c_init(hal_i2c_bus, hz);
+    gpio_set_function(sda_pin, GPIO_FUNC_I2C);
+    gpio_set_function(scl_pin, GPIO_FUNC_I2C);
+    gpio_pull_up(sda_pin);
+    gpio_pull_up(scl_pin);
+    return 0;
+}
+
+int hal_i2c_write(uint8_t addr, const uint8_t *data, size_t len) {
+    if (!hal_i2c_bus) return -1;
+    int rc = i2c_write_blocking(hal_i2c_bus, addr, data, len, false);
+    return (rc == (int)len) ? (int)len : -1;
+}
+
+int hal_i2c_read(uint8_t addr, uint8_t *data, size_t len) {
+    if (!hal_i2c_bus) return -1;
+    int rc = i2c_read_blocking(hal_i2c_bus, addr, data, len, false);
+    return (rc == (int)len) ? (int)len : -1;
+}
+
+int hal_i2c_write_read(uint8_t addr, const uint8_t *wdata, size_t wlen, uint8_t *rdata, size_t rlen) {
+    if (!hal_i2c_bus) return -1;
+    int rc = i2c_write_blocking(hal_i2c_bus, addr, wdata, wlen, true);
+    if (rc != (int)wlen) return -1;
+    rc = i2c_read_blocking(hal_i2c_bus, addr, rdata, rlen, false);
+    return (rc == (int)rlen) ? (int)rlen : -1;
 }
 #endif
 

@@ -24,15 +24,5 @@
         "gpio",
         "sleep",
         "millis"
-    ],
-    "primitives": {
-        "%gpio-init": {"id": 15, "args": 2},
-        "%gpio-write": {"id": 16, "args": 2},
-        "%gpio-read": {"id": 17, "args": 1},
-        "%sleep": {"id": 18, "args": 1},
-        "%millis": {"id": 19, "args": 0},
-        "%adc-read": {"id": 20, "args": 1},
-        "%pwm-write": {"id": 21, "args": 2},
-        "%wave-play": {"id": 22, "args": 2}
-    }
+    ]
 }

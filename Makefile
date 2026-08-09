@@ -103,7 +103,7 @@ ESP32S3_SRCS = src/hal/esp32.cpp src/core/heap.cpp src/core/gc.cpp src/core/mach
 # Board features (peripherals linked into the firmware), comma-separated.
 # The board's enabled capabilities; e.g. a bare chip target would build
 # with SECD_FEATURES= (no GPIO/UART drivers linked).
-SECD_FEATURES ?= gpio,uart
+SECD_FEATURES ?= gpio,uart,i2c
 
 # secd-lisp (CL build that provides the version for .machine metadata)
 SECD_LISP_DIR ?= ../secd-lisp
@@ -111,7 +111,7 @@ SECD_LISP_ASD = $(SECD_LISP_DIR)/secd-lisp.asd
 
 # Test files
 TEST_DIR = tests
-TEST_SRCS = $(wild $(TEST_DIR)/*.c)
+TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
 TEST_OBJS = $(TEST_SRCS:.c=.o)
 
 .PHONY: all clean tests machines machine $(TARGETS) rp2040-debug rp2040-release

@@ -44,7 +44,7 @@ endif()
 # Board features (peripherals linked into the firmware), comma-separated.
 # The chip HAL offers capabilities; the board selects which are enabled here.
 # E.g. a bare chip board builds with -DSECD_FEATURES= to omit GPIO/UART code.
-set(SECD_FEATURES "gpio,uart" CACHE STRING
+set(SECD_FEATURES "gpio,uart,i2c" CACHE STRING
     "Board features to enable (comma-separated): gpio,uart,...")
 message(STATUS "SECD features: ${SECD_FEATURES}")
 
@@ -77,6 +77,8 @@ target_compile_definitions(secd-machine PRIVATE SECD_DEBUG_BUILD=$<BOOL:${SECD_D
 # The vendored CherryUSB composite (CDC console + HID keyboard) is always
 # linked into this firmware, so advertise the HID primitive.
 target_compile_definitions(secd-machine PRIVATE SECD_FEATURE_HID=1)
+# I2C master on I2C0 (pins chosen by the Lisp program at runtime).
+target_compile_definitions(secd-machine PRIVATE SECD_FEATURE_I2C=1)
 
 # Machine version + enabled features, surfaced to the debug serial banner.
 # Keep SECD_MACHINE_VERSION in sync with secd-lisp/secd-lisp.asd :version.
@@ -92,6 +94,8 @@ foreach(_f ${_SECD_FEATURES})
         list(APPEND SECD_FEATURE_LIBS hardware_gpio)
     elseif("${_f}" STREQUAL "uart")
         list(APPEND SECD_FEATURE_LIBS hardware_uart)
+    elseif("${_f}" STREQUAL "i2c")
+        list(APPEND SECD_FEATURE_LIBS hardware_i2c)
     endif()
 endforeach()
 

@@ -59,6 +59,21 @@ int hal_gpio_read(uint8_t pin);
  * The HAL renders the whole packet natively (no interpreter jitter). */
 void hal_wave_play(int pin, int start_level, const uint16_t *duration_ns, int count);
 
+/* I2C master (available when SECD_FEATURE_I2C is enabled). */
+#ifndef SECD_FEATURE_I2C
+#define SECD_FEATURE_I2C 0
+#endif
+#if SECD_FEATURE_I2C
+/* Init the single master bus on the given pins. Returns 0 or -1. */
+int hal_i2c_init(uint8_t sda_pin, uint8_t scl_pin, uint32_t hz);
+/* Write `len` bytes to the 7-bit `addr`. Returns bytes sent, or -1 on NACK/timeout. */
+int hal_i2c_write(uint8_t addr, const uint8_t *data, size_t len);
+/* Read `len` bytes from the 7-bit `addr`. Returns bytes received, or -1. */
+int hal_i2c_read(uint8_t addr, uint8_t *data, size_t len);
+/* Write `wlen` bytes then read `rlen` bytes (register access). Returns bytes received or -1. */
+int hal_i2c_write_read(uint8_t addr, const uint8_t *wdata, size_t wlen, uint8_t *rdata, size_t rlen);
+#endif
+
 /* UART/Serial */
 void hal_serial_init(uint32_t baud);
 void hal_serial_write(uint8_t byte);
