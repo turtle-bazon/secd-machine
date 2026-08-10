@@ -133,8 +133,11 @@ machines: $(TARGETS)
 machine: machines
 
 # Generate target metadata with the CL build version injected
-# (board file in targets/boards/; its chip base is merged in by secd-lisp)
-$(META_DIR)/%.metadata.json: targets/boards/%.json
+# (board file in targets/boards/; its chip base is merged in by secd-lisp).
+# Depends on every board+chip json: editing a chip's capabilities/primitives
+# must invalidate the cached metadata, not just the board file.
+CHIP_JSONS = $(wildcard targets/chips/*.json)
+$(META_DIR)/%.metadata.json: targets/boards/%.json $(CHIP_JSONS)
 	@mkdir -p $(META_DIR)
 	@echo "Generating metadata for $< (version from secd-lisp build)..."
 	@sbcl --non-interactive --load $(SECD_LISP_ASD) \
