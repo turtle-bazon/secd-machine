@@ -282,6 +282,26 @@ secd_value_t prim_i2c_write(secd_heap_t *heap, secd_value_t args) {
     return secd_make_fixnum((int16_t)hal_i2c_write(addr, buf, (size_t)n));
 }
 
+/* %i2c-write-v addr vec: transmit the whole byte-vector verbatim in one
+ * transaction. Unlike %i2c-write (list, capped at 32 bytes) this is an
+ * unbounded vector upload; the register byte rides as element 0, which suits
+ * the BMI270 block-config upload. A RAM copy is made first because the
+ * byte-vector handles the mechanical 1-byte read path -- ESP32 DMA does not
+ * work from ROM/XIP regions. */
+secd_value_t prim_i2c_write_vector(secd_heap_t *heap, secd_value_t args) {
+    uint8_t addr = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
+    secd_value_t vec = get_arg2(heap, args);
+    if (!secd_is_bytevec(vec)) return SECD_NIL;
+    secd_bytevec_t *v = secd_bytevec_get(heap, secd_get_index(vec));
+    if (!v) return SECD_NIL;
+    uint8_t *buf = (uint8_t*)malloc(v->len ? v->len : 1);
+    if (!buf) return SECD_NIL;
+    memcpy(buf, v->data, v->len);
+    int rc = (int)hal_i2c_write(addr, buf, (size_t)v->len);
+    free(buf);
+    return secd_make_fixnum((int16_t)rc);
+}
+
 secd_value_t prim_i2c_read(secd_heap_t *heap, secd_value_t args) {
     uint8_t addr = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
     int16_t count = secd_fixnum_value(get_arg2(heap, args));
@@ -482,5 +502,10 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
     secd_register_prim(registry, "%serial-write", prim_serial_write);
     secd_register_prim(registry, "%serial-read", prim_serial_read);
     secd_register_prim(registry, "%serial-avail", prim_serial_avail);
+#endif
+    /* Registered after USB so the existing base/HID tables never shift.
+       On an S3 this lands at id 38; on a C3 (no HID) at id 30. */
+#if SECD_FEATURE_I2C
+    secd_register_prim(registry, "%i2c-write-v", prim_i2c_write_vector);
 #endif
 }

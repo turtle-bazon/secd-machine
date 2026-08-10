@@ -50,6 +50,7 @@ int secd_machine_init(secd_machine_t *machine, secd_heap_t *heap) {
     machine->running = false;
     machine->steps = 0;
     machine->max_steps = 0;
+    machine->pool_loaded = false;
     
     /* Initialize primitives */
     secd_machine_init_primitives();

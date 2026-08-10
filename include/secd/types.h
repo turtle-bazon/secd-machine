@@ -46,6 +46,7 @@ extern "C" {
 #define SECD_TYPE_CLOSURE  0x5
 #define SECD_TYPE_BIGNUM   0x6
 #define SECD_TYPE_FREE     0x7
+#define SECD_TYPE_BYTEVEC  0xA
 
 /* Type mask and shift */
 #define SECD_TYPE_MASK     0xF000
@@ -188,6 +189,19 @@ static inline secd_value_t secd_make_symbol(uint16_t index) {
 
 static inline secd_value_t secd_make_closure(uint16_t index) {
     return secd_make_handle(SECD_TYPE_CLOSURE, index);
+}
+
+/*
+ * Byte-vector operations (handle creation; the index is a slot in a
+ * descriptor table maintained by the heap, NOT a heap object index)
+ */
+
+static inline secd_value_t secd_make_bytevec(uint16_t slot) {
+    return secd_make_handle(SECD_TYPE_BYTEVEC, slot);
+}
+
+static inline bool secd_is_bytevec(secd_value_t val) {
+    return secd_get_type(val) == SECD_TYPE_BYTEVEC;
 }
 
 #endif /* SECD_TYPES_H */

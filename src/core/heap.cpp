@@ -60,6 +60,13 @@ int secd_heap_init(secd_heap_t *heap, uint16_t size) {
     heap->stats.free = size;
     heap->stats.collections = 0;
     
+    /* Initialize byte-vector table + arena */
+    memset(heap->bytevecs, 0, sizeof(heap->bytevecs));
+    heap->bytevec_count = 0;
+    heap->byte_arena = NULL;
+    heap->byte_arena_size = 0;
+    heap->byte_arena_pos = 0;
+    
     return 0;
 }
 
@@ -74,6 +81,11 @@ void secd_heap_free(secd_heap_t *heap) {
     if (heap->types) {
         free(heap->types);
         heap->types = NULL;
+    }
+    
+    if (heap->byte_arena) {
+        free(heap->byte_arena);
+        heap->byte_arena = NULL;
     }
     
     heap->size = 0;
@@ -280,4 +292,68 @@ secd_value_t secd_cons(secd_heap_t *heap, secd_value_t car, secd_value_t cdr) {
     obj->cdr = cdr;
     
     return secd_make_pair(index);
+}
+
+/*
+ * Byte-vector operations.
+ */
+
+/* Ensure the RAM byte arena is allocated (lazily, on first make-vector). */
+static int bytevec_ensure_arena(secd_heap_t *heap) {
+    if (!heap) return -1;
+    if (heap->byte_arena) return 0;
+    if (SECD_BYTEVEC_ARENA_SIZE == 0) return -1;
+
+    heap->byte_arena = (uint8_t*)malloc(SECD_BYTEVEC_ARENA_SIZE);
+    if (!heap->byte_arena) return -1;
+    heap->byte_arena_size = SECD_BYTEVEC_ARENA_SIZE;
+    heap->byte_arena_pos = 0;
+    return 0;
+}
+
+uint16_t secd_bytevec_register(secd_heap_t *heap, const uint8_t *data, uint16_t len) {
+    if (!heap || !data) return SECD_BYTEVEC_INVALID;
+    if (heap->bytevec_count >= SECD_BYTEVEC_MAX) return SECD_BYTEVEC_INVALID;
+
+    secd_bytevec_t *slot = &heap->bytevecs[heap->bytevec_count];
+    slot->data = data;
+    slot->len = len;
+    slot->writable = 0;
+    return heap->bytevec_count++;
+}
+
+uint16_t secd_bytevec_alloc(secd_heap_t *heap, uint16_t len) {
+    if (!heap || len == 0) return SECD_BYTEVEC_INVALID;
+    if (heap->bytevec_count >= SECD_BYTEVEC_MAX) return SECD_BYTEVEC_INVALID;
+    if (bytevec_ensure_arena(heap) != 0) return SECD_BYTEVEC_INVALID;
+    if ((uint32_t)heap->byte_arena_pos + len > heap->byte_arena_size) {
+        return SECD_BYTEVEC_INVALID; /* Arena exhausted */
+    }
+
+    secd_bytevec_t *slot = &heap->bytevecs[heap->bytevec_count];
+    slot->data = heap->byte_arena + heap->byte_arena_pos;
+    slot->len = len;
+    slot->writable = 1;
+    memset((uint8_t*)slot->data, 0, len);
+    heap->byte_arena_pos += len;
+    return heap->bytevec_count++;
+}
+
+secd_bytevec_t* secd_bytevec_get(secd_heap_t *heap, uint16_t slot) {
+    if (!heap || slot >= heap->bytevec_count) return NULL;
+    return &heap->bytevecs[slot];
+}
+
+int secd_bytevec_read(secd_heap_t *heap, uint16_t slot, uint16_t index) {
+    secd_bytevec_t *v = secd_bytevec_get(heap, slot);
+    if (!v || index >= v->len) return -1;
+    return (int)v->data[index];
+}
+
+int secd_bytevec_write(secd_heap_t *heap, uint16_t slot, uint16_t index, uint8_t byte) {
+    secd_bytevec_t *v = secd_bytevec_get(heap, slot);
+    if (!v || index >= v->len) return -1;
+    if (!v->writable) return -1; /* ROM literal is read-only */
+    ((uint8_t*)v->data)[index] = byte;
+    return 0;
 }

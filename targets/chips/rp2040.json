@@ -48,7 +48,8 @@
         "%usb-hid-add": {"id": 34, "args": 0},
         "%serial-write": {"id": 35, "args": 2},
         "%serial-read": {"id": 36, "args": 1},
-        "%serial-avail": {"id": 37, "args": 1}
+        "%serial-avail": {"id": 37, "args": 1},
+        "%i2c-write-v": {"id": 38, "args": 2}
     },
     "usb": {
         "device": true,

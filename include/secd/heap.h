@@ -45,6 +45,21 @@ extern "C" {
 #define SECD_STACK_DEFAULT_SIZE 256     /* values */
 #define SECD_SYMBOLS_DEFAULT_SIZE 128   /* symbols */
 
+/* Byte-vector configuration.
+ *
+ * Byte-vectors are a separate value kind (SECD_TYPE_BYTEVEC) whose handle
+ * index is a slot in this descriptor table, NOT a heap object index. A slot
+ * either points at read-only data (ROM literals from the bytecode pool) or
+ * at a region of a RAM arena (vectors created with make-vector).
+ */
+#ifndef SECD_BYTEVEC_MAX
+#define SECD_BYTEVEC_MAX 64              /* max simultaneously live byte-vectors */
+#endif
+#ifndef SECD_BYTEVEC_ARENA_SIZE
+#define SECD_BYTEVEC_ARENA_SIZE 8192     /* RAM bytes for make-vector */
+#endif
+#define SECD_BYTEVEC_INVALID 0xFFFF      /* sentinel slot value */
+
 /* Heap statistics */
 typedef struct {
     uint16_t total;     /* Total objects */
@@ -53,6 +68,13 @@ typedef struct {
     uint16_t collections; /* Number of GC collections */
 } secd_heap_stats_t;
 
+/* Byte-vector descriptor */
+typedef struct {
+    const uint8_t *data;    /* byte data (ROM pool or RAM arena) */
+    uint16_t len;           /* number of bytes */
+    uint8_t writable;       /* 1 = RAM arena (make-vector), 0 = ROM literal */
+} secd_bytevec_t;
+
 /* Heap structure */
 typedef struct {
     secd_object_t *objects;     /* Object array */
@@ -60,6 +82,13 @@ typedef struct {
     uint16_t size;              /* Total capacity */
     uint16_t next_free;         /* Next free object index */
     secd_heap_stats_t stats;    /* Statistics */
+
+    /* Byte-vector descriptor table + bump arena (see SECD_BYTEVEC_*) */
+    secd_bytevec_t bytevecs[SECD_BYTEVEC_MAX];
+    uint16_t bytevec_count;
+    uint8_t *byte_arena;
+    uint32_t byte_arena_size;
+    uint32_t byte_arena_pos;
 } secd_heap_t;
 
 /* Initialize heap */
@@ -113,6 +142,31 @@ void secd_set_cdr(secd_heap_t *heap, secd_value_t pair, secd_value_t val);
 
 /* Create a new pair (cons) */
 secd_value_t secd_cons(secd_heap_t *heap, secd_value_t car, secd_value_t cdr);
+
+/*
+ * Byte-vector operations.
+ *
+ * A byte-vector handle's index is a slot in the descriptor table, not a
+ * heap object index, so these manipulate the table + arena directly.
+ */
+
+/* Register a read-only byte vector (e.g. ROM literal from the bytecode pool).
+   Returns the descriptor slot, or SECD_BYTEVEC_INVALID on overflow. */
+uint16_t secd_bytevec_register(secd_heap_t *heap, const uint8_t *data, uint16_t len);
+
+/* Allocate a writable byte vector of LEN bytes from the RAM arena.
+   Returns the descriptor slot, or SECD_BYTEVEC_INVALID on failure. */
+uint16_t secd_bytevec_alloc(secd_heap_t *heap, uint16_t len);
+
+/* Get a descriptor by slot; NULL if the slot is out of range. */
+secd_bytevec_t* secd_bytevec_get(secd_heap_t *heap, uint16_t slot);
+
+/* Read one byte; returns -1 on bad slot/index, else 0..255. */
+int secd_bytevec_read(secd_heap_t *heap, uint16_t slot, uint16_t index);
+
+/* Write one byte; returns 0 on success, -1 on bad slot/index or a
+   read-only (ROM) vector. */
+int secd_bytevec_write(secd_heap_t *heap, uint16_t slot, uint16_t index, uint8_t byte);
 
 #endif /* SECD_HEAP_H */
 

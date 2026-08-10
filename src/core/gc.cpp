@@ -36,6 +36,11 @@ static void mark_object(secd_heap_t *heap, secd_value_t val) {
         return;
     }
     
+    /* Byte-vector handles reference the descriptor table, not heap objects */
+    if (secd_is_bytevec(val)) {
+        return;
+    }
+    
     uint16_t index = secd_get_index(val);
     if (index == 0 || index > heap->size) {
         return; /* Invalid index */

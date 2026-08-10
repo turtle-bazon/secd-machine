@@ -66,6 +66,7 @@ typedef struct {
     bool running;       /* Is machine running? */
     uint32_t steps;     /* Instructions executed */
     uint32_t max_steps; /* Step limit (0 = unlimited) */
+    bool pool_loaded;   /* ROM byte-vector pool registered for this buffer */
 } secd_machine_t;
 
 /* Error codes */

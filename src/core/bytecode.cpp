@@ -51,6 +51,10 @@ int secd_inst_length(uint8_t opcode) {
         case OP_CAR:
         case OP_CDR:
         case OP_CONS:
+        case OP_VREF:
+        case OP_VSTOR:
+        case OP_MKV:
+        case OP_LEN:
         case OP_JOIN:
         case OP_APP:
         case OP_RTN:
@@ -74,6 +78,7 @@ int secd_inst_length(uint8_t opcode) {
             return 2;
         
         /* 3-byte instructions */
+        case OP_LDV:
         case OP_SEL:
         case OP_LOOP:
         case OP_CALL:
@@ -93,12 +98,54 @@ int16_t secd_read_i16(const uint8_t *data) {
     return (int16_t)secd_read_u16(data);
 }
 
+/*
+ * Load the ROM byte-vector pool appended after OP_STOP (see the pool
+ * footer layout in bytecode.h).  Registers each literal as descriptor slot
+ * N, matching the slot index the compiler baked into the preceding OP_LDV
+ * instructions.  Should only run once per bytecode buffer.
+ */
+static int secd_load_pool(secd_machine_t *machine, const uint8_t *bytecode, size_t length) {
+    if (!machine || !bytecode || length < 4) return -1;
+    if (machine->pool_loaded) return 0;
+
+    /* Trailer: [u16 pool_size][u16 magic] */
+    if (secd_read_u16(&bytecode[length - 2]) != SECD_POOL_MAGIC) {
+        return 0; /* No pool present; nothing to do */
+    }
+    uint16_t pool_size = secd_read_u16(&bytecode[length - 4]);
+    if ((size_t)pool_size + 4 > length) return -1; /* Corrupt footer */
+
+    size_t pool_start = length - 4 - pool_size;
+    uint16_t count = secd_read_u16(&bytecode[pool_start]);
+    size_t dir = pool_start + 2;                 /* count * (off, len) entries */
+    size_t data = pool_start + 2 + 4 * (size_t)count;
+
+    for (uint16_t i = 0; i < count; i++) {
+        if (data + 4 * (size_t)i >= length) return -1;
+        uint16_t off = secd_read_u16(&bytecode[dir + 4 * (size_t)i]);
+        uint16_t len = secd_read_u16(&bytecode[dir + 4 * (size_t)i + 2]);
+        if ((size_t)off + len > pool_size) return -1; /* Out of pool bounds */
+        if (secd_bytevec_register(machine->heap, &bytecode[data + off], len)
+            == SECD_BYTEVEC_INVALID) {
+            return -1; /* Descriptor table full */
+        }
+    }
+    machine->pool_loaded = true;
+    return 0;
+}
+
 /* Execute bytecode */
 int secd_execute(secd_machine_t *machine, const uint8_t *bytecode, size_t length) {
     if (!machine || !bytecode || length == 0) {
         return -1;
     }
     
+    /* Register ROM byte-vector literals (once per buffer) */
+    if (secd_load_pool(machine, bytecode, length) != 0) {
+        secd_set_error(machine, SECD_ERROR_INVALID_HANDLE);
+        return -1;
+    }
+
     machine->running = true;
     machine->error = SECD_ERROR_NONE;
     
@@ -390,6 +437,103 @@ int secd_execute(secd_machine_t *machine, const uint8_t *bytecode, size_t length
                 secd_value_t car = secd_pop(machine);
                 secd_value_t result = secd_cons(machine->heap, car, cdr);
                 if (secd_push(machine, result) != 0) {
+                    return -1;
+                }
+                ip += 1;
+                break;
+            }
+            
+            case OP_LDV: {
+                /* Load ROM byte-vector: descriptor slot is the 16-bit operand */
+                uint16_t slot = secd_read_u16(&bytecode[ip + 1]);
+                if (secd_push(machine, secd_make_bytevec(slot)) != 0) {
+                    return -1;
+                }
+                ip += 3;
+                break;
+            }
+
+            case OP_VREF: {
+                /* vref: pop idx, pop vec, push byte (fixnum 0..255) */
+                secd_value_t idx = secd_pop(machine);
+                secd_value_t vec = secd_pop(machine);
+                if (!secd_is_bytevec(vec) || !secd_is_fixnum(idx)) {
+                    secd_set_error(machine, SECD_ERROR_TYPE_ERROR);
+                    return -1;
+                }
+                int b = secd_bytevec_read(machine->heap, secd_get_index(vec),
+                                          secd_get_index(idx));
+                if (b < 0) {
+                    secd_set_error(machine, SECD_ERROR_INVALID_HANDLE);
+                    return -1;
+                }
+                if (secd_push(machine, secd_make_fixnum((int16_t)b)) != 0) {
+                    return -1;
+                }
+                ip += 1;
+                break;
+            }
+
+            case OP_VSTOR: {
+                /* vstore: pop val, pop idx, pop vec; write; push val back
+                 * (setf yields the stored value, like OP_ST). */
+                secd_value_t val = secd_pop(machine);
+                secd_value_t idx = secd_pop(machine);
+                secd_value_t vec = secd_pop(machine);
+                if (!secd_is_bytevec(vec) || !secd_is_fixnum(idx)
+                    || !secd_is_fixnum(val)) {
+                    secd_set_error(machine, SECD_ERROR_TYPE_ERROR);
+                    return -1;
+                }
+                if (secd_bytevec_write(machine->heap, secd_get_index(vec),
+                                       secd_get_index(idx),
+                                       (uint8_t)secd_get_index(val)) != 0) {
+                    secd_set_error(machine, SECD_ERROR_INVALID_HANDLE);
+                    return -1;
+                }
+                if (secd_push(machine, val) != 0) {
+                    return -1;
+                }
+                ip += 1;
+                break;
+            }
+
+            case OP_MKV: {
+                /* make-vector: pop n, push zeroed writable byte-vector */
+                secd_value_t n = secd_pop(machine);
+                if (!secd_is_fixnum(n)) {
+                    secd_set_error(machine, SECD_ERROR_TYPE_ERROR);
+                    return -1;
+                }
+                uint16_t len = secd_get_index(n);
+                uint16_t slot = secd_bytevec_alloc(machine->heap, len);
+                if (slot == SECD_BYTEVEC_INVALID) {
+                    secd_set_error(machine, SECD_ERROR_HEAP_FULL);
+                    return -1;
+                }
+                if (secd_push(machine, secd_make_bytevec(slot)) != 0) {
+                    return -1;
+                }
+                ip += 1;
+                break;
+            }
+
+            case OP_LEN: {
+                /* length: byte-vector -> its len; pair -> cell count; else 0 */
+                secd_value_t val = secd_pop(machine);
+                uint16_t len = 0;
+                if (secd_is_bytevec(val)) {
+                    secd_bytevec_t *v = secd_bytevec_get(machine->heap,
+                                                         secd_get_index(val));
+                    len = v ? v->len : 0;
+                } else {
+                    secd_value_t p = val;
+                    while (secd_is_pair(p)) {
+                        len++;
+                        p = secd_cdr(machine->heap, p);
+                    }
+                }
+                if (secd_push(machine, secd_make_fixnum((int16_t)len)) != 0) {
                     return -1;
                 }
                 ip += 1;

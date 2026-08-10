@@ -68,6 +68,13 @@ typedef enum {
     OP_CDR   = 0x31,  /* Rest element */
     OP_CONS  = 0x32,  /* Construct pair */
     
+    /* Byte-vector operations */
+    OP_LDV   = 0x33,  /* Load byte-vector: push handle for ROM pool slot (u16) */
+    OP_VREF  = 0x34,  /* Byte-vector ref: pop idx, pop vec, push byte 0..255 */
+    OP_VSTOR = 0x35,  /* Byte-vector store: pop val, pop idx, pop vec; push val */
+    OP_MKV   = 0x36,  /* Make-vector: pop n, push writable byte-vector of n zeros */
+    OP_LEN   = 0x37,  /* Length: pop value; push len (byte-vec) or cell count (list) */
+    
     /* Environment operations */
     OP_LD    = 0x40,  /* Load from environment */
     OP_ST    = 0x41,  /* Store to environment */
@@ -112,6 +119,23 @@ typedef struct {
 /* Bytecode file magic */
 #define SECD_MAGIC "SECD"
 #define SECD_VERSION 1
+
+/* ROM byte-vector pool footer.
+ *
+ * The compiler appends the byte-vector literals after OP_STOP as a data pool
+ * so the loader can point descriptors directly into flash.  Layout (bytes at
+ * the very end of the buffer):
+ *
+ *   [pool data: u16 count, then count * (u16 offset, u16 len),
+ *    then the byte blobs]        offset relative to the first data byte
+ *   [u16 pool_size]              total bytes of the pool section above
+ *   [u16 magic]
+ *
+ * pool_start = buffer_length - 4 - pool_size, and the first data byte is at
+ * pool_start + 2 + 4*count.  A pool must be readable from a plain pointer,
+ * so on the ESP32 side it stays in the raw flash bytecode array.
+ */
+#define SECD_POOL_MAGIC 0xB1C5
 
 /* Get instruction length (including operands) */
 int secd_inst_length(uint8_t opcode);
