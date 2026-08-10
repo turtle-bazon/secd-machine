@@ -309,12 +309,13 @@ secd_value_t prim_i2c_read(secd_heap_t *heap, secd_value_t args) {
     if (count > 32) count = 32;
     uint8_t buf[32];
     int got = hal_i2c_read(addr, buf, (size_t)count);
-    if (got < 0) return SECD_NIL;
-    secd_value_t result = SECD_NIL;
-    for (int i = got - 1; i >= 0; i--) {
-        result = secd_cons(heap, secd_make_fixnum((int16_t)buf[i]), result);
+    if (got < 0) got = 0;
+    uint16_t slot = secd_bytevec_alloc(heap, (uint16_t)got);
+    if (slot == SECD_BYTEVEC_INVALID) return SECD_NIL;
+    for (int i = 0; i < got; i++) {
+        secd_bytevec_write(heap, slot, (uint16_t)i, buf[i]);
     }
-    return result;
+    return secd_make_bytevec(slot);
 }
 
 secd_value_t prim_i2c_write_read(secd_heap_t *heap, secd_value_t args) {
@@ -331,12 +332,13 @@ secd_value_t prim_i2c_write_read(secd_heap_t *heap, secd_value_t args) {
     if (count > 32) count = 32;
     uint8_t rbuf[32];
     int got = hal_i2c_write_read(addr, wbuf, (size_t)wn, rbuf, (size_t)count);
-    if (got < 0) return SECD_NIL;
-    secd_value_t result = SECD_NIL;
-    for (int i = got - 1; i >= 0; i--) {
-        result = secd_cons(heap, secd_make_fixnum((int16_t)rbuf[i]), result);
+    if (got < 0) got = 0;
+    uint16_t slot = secd_bytevec_alloc(heap, (uint16_t)got);
+    if (slot == SECD_BYTEVEC_INVALID) return SECD_NIL;
+    for (int i = 0; i < got; i++) {
+        secd_bytevec_write(heap, slot, (uint16_t)i, rbuf[i]);
     }
-    return result;
+    return secd_make_bytevec(slot);
 }
 #endif
 

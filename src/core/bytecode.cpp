@@ -658,7 +658,10 @@ int secd_execute(secd_machine_t *machine, const uint8_t *bytecode, size_t length
             }
             
             case OP_PRN: {
-                /* Print (debug) */
+                /* Print (debug). Print its argument and push the same value
+                 * back, so print is value-preserving: (progn (print x) ...)
+                 * must not disturb the stack (OP_POP discards the result like
+                 * for any other evaluating form). */
                 secd_value_t val = secd_pop(machine);
                 if (secd_is_fixnum(val)) {
                     hal_print_int(secd_fixnum_value(val));
@@ -672,6 +675,9 @@ int secd_execute(secd_machine_t *machine, const uint8_t *bytecode, size_t length
                     hal_print("<object>");
                 }
                 hal_print("\n");
+                if (secd_push(machine, val) != 0) {
+                    return -1;
+                }
                 ip += 1;
                 break;
             }
