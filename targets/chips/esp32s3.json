@@ -50,7 +50,9 @@
         "%serial-write": {"id": 35, "args": 2},
         "%serial-read": {"id": 36, "args": 1},
         "%serial-avail": {"id": 37, "args": 1},
-        "%i2c-write-v": {"id": 38, "args": 2}
+        "%i2c-write-v": {"id": 38, "args": 2},
+        "%hid-mouse": {"id": 39, "args": 4},
+        "%usb-mouse-add": {"id": 40, "args": 0}
     },
     "usb": {
         "device": true,

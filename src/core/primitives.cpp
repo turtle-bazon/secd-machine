@@ -102,6 +102,11 @@ static secd_value_t get_arg3(secd_heap_t *heap, secd_value_t args) {
     return secd_car(heap, secd_cdr(heap, secd_cdr(heap, args)));
 }
 
+/* Helper: get fourth argument */
+static secd_value_t get_arg4(secd_heap_t *heap, secd_value_t args) {
+    return secd_car(heap, secd_cdr(heap, secd_cdr(heap, secd_cdr(heap, args))));
+}
+
 /* List operations */
 secd_value_t prim_car(secd_heap_t *heap, secd_value_t args) {
     secd_value_t pair = get_arg1(heap, args);
@@ -365,10 +370,24 @@ secd_value_t prim_usb_hid_add(secd_heap_t *heap, secd_value_t args) {
     return secd_make_fixnum((int16_t)hal_usb_hid_add());
 }
 
+secd_value_t prim_usb_mouse_add(secd_heap_t *heap, secd_value_t args) {
+    (void)heap; (void)args;
+    return secd_make_fixnum((int16_t)hal_usb_mouse_add());
+}
+
 secd_value_t prim_hid_key(secd_heap_t *heap, secd_value_t args) {
     uint8_t modifier = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
     uint8_t usage = (uint8_t)secd_fixnum_value(get_arg2(heap, args));
     hal_hid_keyboard_tap(modifier, usage);
+    return SECD_NIL;
+}
+
+secd_value_t prim_hid_mouse(secd_heap_t *heap, secd_value_t args) {
+    uint8_t buttons = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
+    int8_t dx = (int8_t)secd_fixnum_value(get_arg2(heap, args));
+    int8_t dy = (int8_t)secd_fixnum_value(get_arg3(heap, args));
+    int8_t wheel = (int8_t)secd_fixnum_value(get_arg4(heap, args));
+    hal_hid_mouse_send(dx, dy, buttons, wheel);
     return SECD_NIL;
 }
 
@@ -509,5 +528,14 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
        On an S3 this lands at id 38; on a C3 (no HID) at id 30. */
 #if SECD_FEATURE_I2C
     secd_register_prim(registry, "%i2c-write-v", prim_i2c_write_vector);
+#endif
+    /* %hid-mouse rides the S3's second HID interface (EP6); on boards
+       without HID the primitive is simply not registered, and anything
+       after it (none today) would stay id-stable. */
+#if SECD_FEATURE_HID
+    secd_register_prim(registry, "%hid-mouse", prim_hid_mouse);
+    /* Must be sorted by name for lookups and appears after %hid-mouse;
+       ids on S3: %usb-mouse-add = 40, %hid-mouse = 39. */
+    secd_register_prim(registry, "%usb-mouse-add", prim_usb_mouse_add);
 #endif
 }

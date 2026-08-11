@@ -271,6 +271,20 @@ int secd_usb_hid_add(void)
     return 0;
 }
 
+/* RP2040 has a single HID interface (the keyboard); a second HID mouse
+ * interface is not supported, so the mouse add is a hard failure and the
+ * mouse send is a no-op. Both exist only so the HAL glue stays uniform. */
+int secd_usb_mouse_add(void)
+{
+    (void)0;
+    return -1;
+}
+
+void secd_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel)
+{
+    (void)dx; (void)dy; (void)buttons; (void)wheel;
+}
+
 void secd_usb_start(void)
 {
     if (s_started) return;
