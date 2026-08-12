@@ -126,6 +126,7 @@ int hal_serial_available(void) {
 /* I2C master (board feature), new i2c_master driver API. */
 #if SECD_FEATURE_I2C
 static i2c_master_bus_handle_t hal_i2c_bus = NULL;
+static uint32_t hal_i2c_hz = 100000;
 
 /* Build a fully-zeroed device config (avoids -Wmissing-field-initializers). */
 static i2c_device_config_t make_dev_cfg(uint8_t addr) {
@@ -133,8 +134,17 @@ static i2c_device_config_t make_dev_cfg(uint8_t addr) {
     memset(&dev, 0, sizeof(dev));
     dev.dev_addr_length = I2C_ADDR_BIT_LEN_7;
     dev.device_address = addr;
-    dev.scl_speed_hz = 100000;
+    dev.scl_speed_hz = hal_i2c_hz;
     return dev;
+}
+
+/* Transfer timeout proportional to the byte count: at 100kHz each byte is
+ * ~90us of wire time, so an 8KB BMI270 config upload needs ~740ms -- far
+ * more than a fixed 100ms. Use 2x the worst-case wire time plus a 100ms
+ * headroom. */
+static int i2c_xfer_timeout(size_t len) {
+    uint32_t us = (uint32_t)((len * 9u * 1000000u) / (hal_i2c_hz ? hal_i2c_hz : 100000u));
+    return (int)((us / 1000u) * 2 + 100);
 }
 
 int hal_i2c_init(uint8_t sda_pin, uint8_t scl_pin, uint32_t hz) {
@@ -146,6 +156,7 @@ int hal_i2c_init(uint8_t sda_pin, uint8_t scl_pin, uint32_t hz) {
     cfg.clk_source = I2C_CLK_SRC_DEFAULT;
     cfg.glitch_ignore_cnt = 7;
     cfg.flags.enable_internal_pullup = true;
+    if (hz) hal_i2c_hz = hz;
     return (i2c_new_master_bus(&cfg, &hal_i2c_bus) == ESP_OK) ? 0 : -1;
 }
 
@@ -154,7 +165,7 @@ int hal_i2c_write(uint8_t addr, const uint8_t *data, size_t len) {
     i2c_device_config_t dev = make_dev_cfg(addr);
     i2c_master_dev_handle_t devh;
     if (i2c_master_bus_add_device(hal_i2c_bus, &dev, &devh) != ESP_OK) return -1;
-    esp_err_t rc = i2c_master_transmit(devh, data, len, 100);
+    esp_err_t rc = i2c_master_transmit(devh, data, len, i2c_xfer_timeout(len));
     i2c_master_bus_rm_device(devh);
     return (rc == ESP_OK) ? (int)len : -1;
 }
@@ -164,7 +175,7 @@ int hal_i2c_read(uint8_t addr, uint8_t *data, size_t len) {
     i2c_device_config_t dev = make_dev_cfg(addr);
     i2c_master_dev_handle_t devh;
     if (i2c_master_bus_add_device(hal_i2c_bus, &dev, &devh) != ESP_OK) return -1;
-    esp_err_t rc = i2c_master_receive(devh, data, len, 100);
+    esp_err_t rc = i2c_master_receive(devh, data, len, i2c_xfer_timeout(len));
     i2c_master_bus_rm_device(devh);
     return (rc == ESP_OK) ? (int)len : -1;
 }
@@ -174,7 +185,8 @@ int hal_i2c_write_read(uint8_t addr, const uint8_t *wdata, size_t wlen, uint8_t 
     i2c_device_config_t dev = make_dev_cfg(addr);
     i2c_master_dev_handle_t devh;
     if (i2c_master_bus_add_device(hal_i2c_bus, &dev, &devh) != ESP_OK) return -1;
-    esp_err_t rc = i2c_master_transmit_receive(devh, wdata, wlen, rdata, rlen, 100);
+    esp_err_t rc = i2c_master_transmit_receive(devh, wdata, wlen, rdata, rlen,
+                                               i2c_xfer_timeout(wlen + rlen));
     i2c_master_bus_rm_device(devh);
     return (rc == ESP_OK) ? (int)rlen : -1;
 }
