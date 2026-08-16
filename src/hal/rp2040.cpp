@@ -219,8 +219,8 @@ int hal_usb_mouse_add(void) {
     return secd_usb_mouse_add();
 }
 
-void hal_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel) {
-    secd_hid_mouse_send(dx, dy, buttons, wheel);
+int hal_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel) {
+    return secd_hid_mouse_send(dx, dy, buttons, wheel);
 }
 
 int hal_usb_serial_write(int port, uint8_t byte) {

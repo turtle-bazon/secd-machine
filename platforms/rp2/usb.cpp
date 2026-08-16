@@ -280,9 +280,10 @@ int secd_usb_mouse_add(void)
     return -1;
 }
 
-void secd_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel)
+int secd_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel)
 {
     (void)dx; (void)dy; (void)buttons; (void)wheel;
+    return -1;
 }
 
 void secd_usb_start(void)

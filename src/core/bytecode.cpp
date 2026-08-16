@@ -158,7 +158,8 @@ int secd_execute(secd_machine_t *machine, const uint8_t *bytecode, size_t length
         }
         machine->steps++;
 
-        if (machine->heap->stats.free < SECD_GC_THRESHOLD) {
+        if (machine->heap->stats.free < SECD_GC_THRESHOLD ||
+            machine->heap->bytevec_count >= SECD_BYTEVEC_MAX - 4) {
             secd_gc_run(machine);
         }
 
@@ -269,6 +270,61 @@ int secd_execute(secd_machine_t *machine, const uint8_t *bytecode, size_t length
                 if (secd_is_pair(e)) {
                     secd_set_car(machine->heap, e, val);
                 }
+                if (secd_push(machine, val) != 0) {
+                    return -1;
+                }
+                ip += 3;
+                break;
+            }
+            
+            case OP_LDG: {
+                /* Load global at G[index] (innermost-first). */
+                uint16_t index = secd_read_u16(&bytecode[ip + 1]);
+                secd_value_t g = machine->G;
+                uint16_t i = 0;
+                while (secd_is_pair(g) && i < index) {
+                    g = secd_cdr(machine->heap, g);
+                    i++;
+                }
+                secd_value_t val = secd_is_pair(g) ? secd_car(machine->heap, g) : SECD_NIL;
+                if (secd_push(machine, val) != 0) {
+                    return -1;
+                }
+                ip += 3;
+                break;
+            }
+            
+            case OP_STG: {
+                /* Store into global cell at index `index`; grows the global
+                 * frame with NIL cells as needed. Leaves the value on the
+                 * stack (setf yields the stored value). */
+                uint16_t index = secd_read_u16(&bytecode[ip + 1]);
+                secd_value_t val = secd_pop(machine);
+                secd_value_t *cur = &machine->G;
+                uint16_t i = 0;
+                while (i < index) {
+                    if (secd_is_nil(*cur)) {
+                        *cur = secd_cons(machine->heap, SECD_NIL, SECD_NIL);
+                        if (secd_is_nil(*cur)) {
+                            secd_set_error(machine, SECD_ERROR_HEAP_FULL);
+                            return -1;
+                        }
+                    }
+                    secd_object_t *obj = secd_heap_get(machine->heap, secd_get_index(*cur));
+                    if (!obj) return -1;
+                    cur = &obj->cdr;
+                    i++;
+                }
+                if (secd_is_nil(*cur)) {
+                    *cur = secd_cons(machine->heap, SECD_NIL, SECD_NIL);
+                    if (secd_is_nil(*cur)) {
+                        secd_set_error(machine, SECD_ERROR_HEAP_FULL);
+                        return -1;
+                    }
+                }
+                secd_object_t *obj = secd_heap_get(machine->heap, secd_get_index(*cur));
+                if (!obj) return -1;
+                obj->car = val;
                 if (secd_push(machine, val) != 0) {
                     return -1;
                 }

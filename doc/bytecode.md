@@ -59,10 +59,11 @@ The SECD bytecode is a compact, stack-based instruction set designed for resourc
 
 | Opcode | Name | Operand | Description |
 |--------|------|---------|-------------|
-| 0x40 | LDE | None | Push current environment onto stack |
-| 0x41 | LD | offset (8-bit) | Push value from environment at offset |
-| 0x42 | ST | offset (8-bit) | Store top of stack into environment |
-| 0x43 | ARGS | count (8-bit) | Pop count arguments, create new environment |
+| 0x40 | LD | offset (16-bit) | Push value from environment at offset |
+| 0x41 | ST | offset (16-bit) | Store top of stack into environment |
+| 0x42 | ARGS | count (8-bit) | Pop count arguments, create new environment |
+| 0x43 | LDG | offset (16-bit) | Push value from global frame at offset |
+| 0x44 | STG | offset (16-bit) | Store top of stack into global frame |
 
 ### Control Flow
 

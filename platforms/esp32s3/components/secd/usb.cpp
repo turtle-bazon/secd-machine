@@ -9,14 +9,15 @@
  *     %usb-hid-add       -> secd_usb_hid_add():   add the HID keyboard
  *     %usb-start         -> secd_usb_start():     freeze + enumerate
  *
- * The CDC-ACM console (SECD print/format, port 0) is always present. Up to
- * SECD_USB_MAX_PORTS-1 further Lisp serial consoles can be added. The config
- * descriptor is built once at secd_usb_start() from the current registry and
- * stored (USB cannot add interfaces after enumeration).
+ * The CDC-ACM console (SECD print/format, port 0) is always present. The
+ * config descriptor is built once at secd_usb_start() from the current registry
+ * and stored (USB cannot add interfaces after enumeration).
  *
  * The structs mirror platforms/rp2/usb.cpp. The ESP32-S3 DWC2 core differs:
- *   - only endpoints EP0..EP6 are wired (TX FIFOs for EP1..EP6), so the S3
- *     build caps CDC ports at SECD_USB_MAX_PORTS=2 and puts HID on EP5;
+ *   - it implements only 4 TX FIFO registers (DIEPTXF[0..3], EP1..EP4);
+ *     DIEPTXF[4..5] are absent (writes dropped, reads alias EP1/EP2), so the
+ *     S3 build caps CDC ports at SECD_USB_MAX_PORTS=1 (console only) and puts
+ *     HID keyboard on EP3 / HID mouse on EP4;
  *   - usbd_ep_start_write/read require 4-byte-aligned data buffers, so every
  *     DMA-facing buffer here carries alignas(4).
  */
@@ -30,6 +31,24 @@ extern "C" {
 }
 
 #include <string.h>
+#include <stdio.h>
+
+extern "C" void esp_rom_delay_us(uint32_t us);
+
+/* Max time to wait for an IN (device->host) transfer to complete. A stuck
+ * transfer (e.g. endpoint not opened or host never polls) must not hang the
+ * VM, so every sender bounds its wait and gives up. */
+#define TX_WAIT_TIMEOUT_US 20000
+
+static void wait_tx(volatile bool *busy)
+{
+    uint32_t waited = 0;
+    while (*busy) {
+        if (waited >= TX_WAIT_TIMEOUT_US) break;
+        esp_rom_delay_us(50);
+        waited += 50;
+    }
+}
 
 /* ESP32-S3 USB-OTG (DWC2) registers. ESP_USBD_BASE normally comes from the
  * CherryUSB osal/idf/usb_config.h, but that include path may not reach here;
@@ -39,13 +58,15 @@ extern "C" {
 #endif
 
 /* Total CDC-ACM ports: 1 console + (SECD_USB_MAX_PORTS-1) Lisp serials.
- * Limited to 2 by the ESP32-S3 DWC2 (EP0..EP6, TX FIFOs EP1..EP6):
+ * Only 4 TX FIFO registers exist (EP1..EP4), so at most 4 IN endpoints:
  *   port0: OUT EP1, IN EP1 (data) + EP2 (notif)
- *   port1: OUT EP3, IN EP3 (data) + EP4 (notif)
- *   HID:   IN EP5
+ *   HID keyboard: IN EP3
+ *   HID mouse:    IN EP4
  */
 #ifndef SECD_USB_MAX_PORTS
-#define SECD_USB_MAX_PORTS 2
+/* Only 4 TX FIFOs exist (EP1..EP4): console uses EP1 data + EP2 notif, so the
+ * remaining EP3/EP4 go to HID keyboard/mouse. No extra Lisp serial port. */
+#define SECD_USB_MAX_PORTS 1
 #endif
 
 #define USBD_VID   0xFFFF
@@ -57,7 +78,7 @@ extern "C" {
 #define HID_EP_INTERVAL 1
 #define HID_KEYBOARD_REPORT_DESC_SIZE 63
 
-/* Mouse HID: 4-byte report (buttons, dx, dy, wheel) on EP6 (free). */
+/* Mouse HID: 4-byte report (buttons, dx, dy, wheel) on EP4 (free). */
 #define HID_MOUSE_EP_SIZE     4
 #define HID_MOUSE_EP_INTERVAL 1
 #define HID_MOUSE_REPORT_DESC_SIZE 74
@@ -65,13 +86,13 @@ extern "C" {
 #define RING_SIZE 256
 #define CDC_RX_BUF     64
 
-/* HID IN endpoints: keyboard EP5, mouse EP6 (CDCs use EP1-4). */
-#define HID_EP     0x85
-#define HID_MOUSE_EP 0x86
+/* HID IN endpoints: keyboard EP3, mouse EP4 (CDCs use EP1-2). */
+#define HID_EP     0x83
+#define HID_MOUSE_EP 0x84
 
-static const uint8_t cdc_ep_out[SECD_USB_MAX_PORTS] = {0x01, 0x03};
-static const uint8_t cdc_ep_in[SECD_USB_MAX_PORTS]  = {0x81, 0x83};
-static const uint8_t cdc_ep_not[SECD_USB_MAX_PORTS] = {0x82, 0x84};
+static const uint8_t cdc_ep_out[SECD_USB_MAX_PORTS] = {0x01};
+static const uint8_t cdc_ep_in[SECD_USB_MAX_PORTS]  = {0x81};
+static const uint8_t cdc_ep_not[SECD_USB_MAX_PORTS] = {0x82};
 
 /* ------------------------------------------------------------- per-port state */
 struct cdc_port {
@@ -101,7 +122,6 @@ static const uint8_t device_descriptor[] = {
 /* One CDC-ACM bridge descriptor per supported port (66 bytes each). */
 static const uint8_t acm_desc[SECD_USB_MAX_PORTS][CDC_ACM_DESCRIPTOR_LEN] = {
     CDC_ACM_DESCRIPTOR_INIT(0, cdc_ep_not[0], cdc_ep_out[0], cdc_ep_in[0], CDC_MAX_MPS, 0),
-    CDC_ACM_DESCRIPTOR_INIT(2, cdc_ep_not[1], cdc_ep_out[1], cdc_ep_in[1], CDC_MAX_MPS, 0),
 };
 
 static const uint8_t hid_kbd_report_desc[HID_KEYBOARD_REPORT_DESC_SIZE] = {
@@ -132,9 +152,9 @@ static const uint8_t hid_mouse_report_desc[HID_MOUSE_REPORT_DESC_SIZE] = {
     0x02, 0xb1, 0x22, 0x75, 0x06, 0x95, 0x01, 0xb1,
     0x01, 0xc0};
 
-static const uint8_t hid_mouse_desc[HID_KEYBOARD_DESCRIPTOR_LEN] = {
-    HID_KEYBOARD_DESCRIPTOR_INIT(0, 0x01, HID_MOUSE_REPORT_DESC_SIZE,
-                                 HID_MOUSE_EP, HID_MOUSE_EP_SIZE, HID_MOUSE_EP_INTERVAL)};
+static const uint8_t hid_mouse_desc[HID_MOUSE_DESCRIPTOR_LEN] = {
+    HID_MOUSE_DESCRIPTOR_INIT(0, 0x01, HID_MOUSE_REPORT_DESC_SIZE,
+                              HID_MOUSE_EP, HID_MOUSE_EP_SIZE, HID_MOUSE_EP_INTERVAL)};
 
 static const char *string_descriptors[] = {
     (const char[]){0x09, 0x04}, /* Langid */
@@ -256,7 +276,7 @@ static void hid_ep_send(const uint8_t *buf)
 {
     hid_tx_busy = true;
     usbd_ep_start_write(0, HID_EP, buf, HID_EP_SIZE);
-    while (hid_tx_busy) { /* hid_in_cb completes the transfer */ }
+    wait_tx(&hid_tx_busy);
 }
 
 static volatile bool hid_mouse_tx_busy = false;
@@ -265,13 +285,6 @@ static void hid_mouse_in_cb(uint8_t busid, uint8_t ep, uint32_t nbytes)
 {
     (void)busid; (void)ep; (void)nbytes;
     hid_mouse_tx_busy = false;
-}
-
-static void hid_mouse_ep_send(const uint8_t *buf)
-{
-    hid_mouse_tx_busy = true;
-    usbd_ep_start_write(0, HID_MOUSE_EP, buf, HID_MOUSE_EP_SIZE);
-    while (hid_mouse_tx_busy) { /* hid_mouse_in_cb completes the transfer */ }
 }
 
 static void secd_usbd_event(uint8_t busid, uint8_t event)
@@ -293,7 +306,7 @@ static void send_on(struct cdc_port *c, uint8_t ep_in, const uint8_t *buf, uint1
 {
     c->tx_busy = true;
     usbd_ep_start_write(0, ep_in, buf, len);
-    while (c->tx_busy) { /* ISR completes the transfer */ }
+    wait_tx(&c->tx_busy);
 }
 
 void secd_usb_init(void)
@@ -480,16 +493,20 @@ void secd_hid_keyboard_tap(uint8_t modifier, uint8_t usage)
 }
 
 /* ---- HID mouse ---- */
-void secd_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel)
+int secd_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel)
 {
     alignas(4) static uint8_t rep[HID_MOUSE_EP_SIZE];
-    if (!s_mouse || !s_started || !usb_device_is_configured(0)) return;
+    if (!s_mouse || !s_started || !usb_device_is_configured(0)) return -1;
 
     rep[0] = buttons;
     rep[1] = (uint8_t)dx;
     rep[2] = (uint8_t)dy;
     rep[3] = (uint8_t)wheel;
-    hid_mouse_ep_send(rep);
+    hid_mouse_tx_busy = true;
+    usbd_ep_start_write(0, HID_MOUSE_EP, rep, HID_MOUSE_EP_SIZE);
+    wait_tx(&hid_mouse_tx_busy);
+
+    return (hid_mouse_tx_busy ? 0 : 1);
 }
 
 /* CDC control hooks: track per-port DTR (intf number = 2 * port). */

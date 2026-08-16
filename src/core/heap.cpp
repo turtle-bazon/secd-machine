@@ -17,6 +17,7 @@
  */
 #include "secd/heap.h"
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 /*
@@ -33,6 +34,14 @@
 int secd_heap_init(secd_heap_t *heap, uint16_t size) {
     if (!heap || size == 0) {
         return -1;
+    }
+    
+    /* Value handles encode a 12-bit object index (SECD_INDEX_MASK = 4095),
+     * so the heap is limited to 4095 addressable objects regardless of the
+     * requested size.  Clamp here so oversized callers can't corrupt the
+     * free-list / handle space at runtime. */
+    if (size > SECD_INDEX_MASK) {
+        size = SECD_INDEX_MASK;
     }
     
     /* Allocate object array */
@@ -66,6 +75,7 @@ int secd_heap_init(secd_heap_t *heap, uint16_t size) {
     heap->byte_arena = NULL;
     heap->byte_arena_size = 0;
     heap->byte_arena_pos = 0;
+    heap->bytevec_marks = 0;
     
     return 0;
 }
@@ -201,6 +211,38 @@ static void clear_marks(secd_heap_t *heap) {
     }
 }
 
+/* Sweep the RAM byte-vector arena: unreachable writable slots (make-vector /
+ * I2C reads) are released and their descriptor freed for reuse, and the
+ * survivors are packed to the arena front so byte_arena_pos can restart.
+ * ROM pool slots are permanent (they alias the bytecode buffer) and are left
+ * untouched. */
+static void secd_heap_gc_bytevecs(secd_heap_t *heap) {
+    if (!heap) return;
+
+    uint32_t pack = 0;
+    for (uint16_t i = 0; i < heap->bytevec_count; i++) {
+        secd_bytevec_t *v = &heap->bytevecs[i];
+        if (!v->writable) continue;             /* ROM: keep as-is */
+
+        if (heap->bytevec_marks & ((uint64_t)1 << i)) {
+            /* Reachable: move its data down to the pack position. */
+            if (v->data && heap->byte_arena
+                && (v->data - heap->byte_arena) != (int32_t)pack) {
+                memmove(heap->byte_arena + pack, v->data, v->len);
+            }
+            v->data = heap->byte_arena + pack;
+            pack += v->len;
+        } else {
+            /* Unreachable: release the descriptor. */
+            v->data = NULL;
+            v->len = 0;
+            v->writable = 0;
+        }
+    }
+    heap->byte_arena_pos = pack;
+    heap->bytevec_marks = 0;
+}
+
 uint16_t secd_heap_gc(secd_heap_t *heap) {
     if (!heap) return 0;
     
@@ -219,6 +261,11 @@ uint16_t secd_heap_gc(secd_heap_t *heap) {
             }
         }
     }
+    
+    /* Sweep the RAM byte-vector arena too: drop unreachable slots and pack
+     * the survivors to the front so the bump pointer can be reset. ROM slots
+     * (bytecode pool literals) are permanent and never move. */
+    secd_heap_gc_bytevecs(heap);
     
     /* Clear marks for next collection */
     clear_marks(heap);
@@ -283,7 +330,7 @@ secd_value_t secd_cons(secd_heap_t *heap, secd_value_t car, secd_value_t cdr) {
         return SECD_NIL; /* Heap full */
     }
     
-    secd_object_t *obj = secd_heap_get(heap, index);
+secd_object_t *obj = secd_heap_get(heap, index);
     if (!obj) {
         return SECD_NIL;
     }
@@ -311,32 +358,46 @@ static int bytevec_ensure_arena(secd_heap_t *heap) {
     return 0;
 }
 
+/* Find a free descriptor slot (data == NULL) below bytevec_count, else a new
+ * one at bytevec_count. Returns SECD_BYTEVEC_INVALID if the table is full. */
+static uint16_t bytevec_free_slot(secd_heap_t *heap) {
+    for (uint16_t i = 0; i < heap->bytevec_count; i++) {
+        if (heap->bytevecs[i].data == NULL) return i;
+    }
+    if (heap->bytevec_count >= SECD_BYTEVEC_MAX) return SECD_BYTEVEC_INVALID;
+    return heap->bytevec_count;
+}
+
 uint16_t secd_bytevec_register(secd_heap_t *heap, const uint8_t *data, uint16_t len) {
     if (!heap || !data) return SECD_BYTEVEC_INVALID;
-    if (heap->bytevec_count >= SECD_BYTEVEC_MAX) return SECD_BYTEVEC_INVALID;
+    uint16_t slot = bytevec_free_slot(heap);
+    if (slot == SECD_BYTEVEC_INVALID) return SECD_BYTEVEC_INVALID;
+    if (slot == heap->bytevec_count) heap->bytevec_count++;
 
-    secd_bytevec_t *slot = &heap->bytevecs[heap->bytevec_count];
-    slot->data = data;
-    slot->len = len;
-    slot->writable = 0;
-    return heap->bytevec_count++;
+    secd_bytevec_t *v = &heap->bytevecs[slot];
+    v->data = data;
+    v->len = len;
+    v->writable = 0;
+    return slot;
 }
 
 uint16_t secd_bytevec_alloc(secd_heap_t *heap, uint16_t len) {
     if (!heap || len == 0) return SECD_BYTEVEC_INVALID;
-    if (heap->bytevec_count >= SECD_BYTEVEC_MAX) return SECD_BYTEVEC_INVALID;
     if (bytevec_ensure_arena(heap) != 0) return SECD_BYTEVEC_INVALID;
     if ((uint32_t)heap->byte_arena_pos + len > heap->byte_arena_size) {
         return SECD_BYTEVEC_INVALID; /* Arena exhausted */
     }
+    uint16_t slot = bytevec_free_slot(heap);
+    if (slot == SECD_BYTEVEC_INVALID) return SECD_BYTEVEC_INVALID;
+    if (slot == heap->bytevec_count) heap->bytevec_count++;
 
-    secd_bytevec_t *slot = &heap->bytevecs[heap->bytevec_count];
-    slot->data = heap->byte_arena + heap->byte_arena_pos;
-    slot->len = len;
-    slot->writable = 1;
-    memset((uint8_t*)slot->data, 0, len);
+    secd_bytevec_t *v = &heap->bytevecs[slot];
+    v->data = heap->byte_arena + heap->byte_arena_pos;
+    v->len = len;
+    v->writable = 1;
+    memset((uint8_t*)v->data, 0, len);
     heap->byte_arena_pos += len;
-    return heap->bytevec_count++;
+    return slot;
 }
 
 secd_bytevec_t* secd_bytevec_get(secd_heap_t *heap, uint16_t slot) {

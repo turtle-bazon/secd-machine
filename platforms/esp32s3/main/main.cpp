@@ -1,6 +1,7 @@
 /*
  * ESP32-S3 main: starts the SECD VM.
- * The VM bytecode is merged into the app image (see components/secd/secd_bytecode.cpp).
+ * The VM bytecode is appended to the flash image after the app and located at
+ * runtime by scanning past the image end (see components/secd/secd_start.cpp).
  */
 #include <stdio.h>
 

@@ -2,7 +2,7 @@
     "chip": "esp32s3",
     "description": "Espressif ESP32-S3 dual-core Xtensa LX7 microcontroller @ 240MHz",
     "output": {
-        "format": "uf2",
+        "format": "bin",
         "family": "esp32s3"
     },
     "memory": {

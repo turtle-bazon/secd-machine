@@ -89,6 +89,11 @@ typedef struct {
     uint8_t *byte_arena;
     uint32_t byte_arena_size;
     uint32_t byte_arena_pos;
+
+    /* GC mark bits for bytevec slots: bit N set = slot N reachable from the
+     * machine roots on the last collection. ROM slots (bytecode pool) are
+     * never freed, so only RAM (make-vector / read) slots use these. */
+    uint64_t bytevec_marks;
 } secd_heap_t;
 
 /* Initialize heap */

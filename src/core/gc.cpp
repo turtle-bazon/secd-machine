@@ -36,8 +36,13 @@ static void mark_object(secd_heap_t *heap, secd_value_t val) {
         return;
     }
     
-    /* Byte-vector handles reference the descriptor table, not heap objects */
+    /* Byte-vector handles reference the descriptor table, not heap objects.
+     * Record the slot as reachable so the sweep can reclaim it. */
     if (secd_is_bytevec(val)) {
+        uint16_t slot = secd_get_index(val);
+        if (slot < SECD_BYTEVEC_MAX) {
+            heap->bytevec_marks |= (uint64_t)1 << slot;
+        }
         return;
     }
     
@@ -103,6 +108,11 @@ static void mark_env(secd_machine_t *machine) {
     mark_object(machine->heap, machine->E);
 }
 
+/* Mark the global environment (a flat list of global cells) */
+static void mark_globals(secd_machine_t *machine) {
+    mark_object(machine->heap, machine->G);
+}
+
 /* Mark the dump stack (a list of saved environments and return addresses) */
 static void mark_dump(secd_machine_t *machine) {
     mark_object(machine->heap, machine->dump_stack);
@@ -117,6 +127,7 @@ uint16_t secd_gc_run(secd_machine_t *machine) {
     /* Mark phase: traverse from roots */
     mark_stack(machine);
     mark_env(machine);
+    mark_globals(machine);
     mark_dump(machine);
     
     /* Sweep phase: free unmarked objects */

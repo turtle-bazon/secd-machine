@@ -97,7 +97,7 @@ int  hal_usb_serial_add(void);
 int  hal_usb_hid_add(void);
 int  hal_usb_mouse_add(void);
 void hal_hid_keyboard_tap(uint8_t modifier, uint8_t usage);
-void hal_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel);
+int  hal_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel);
 int  hal_usb_serial_write(int port, uint8_t byte);
 int  hal_usb_serial_read(int port);
 int  hal_usb_serial_available(int port);

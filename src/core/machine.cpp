@@ -42,6 +42,7 @@ int secd_machine_init(secd_machine_t *machine, secd_heap_t *heap) {
     machine->heap = heap;
     machine->S = SECD_NIL;
     machine->E = SECD_NIL;
+    machine->G = SECD_NIL;
     machine->C = SECD_NIL;
     machine->D = SECD_NIL;
     machine->dump_stack = SECD_NIL;
@@ -63,6 +64,7 @@ void secd_machine_free(secd_machine_t *machine) {
     
     machine->S = SECD_NIL;
     machine->E = SECD_NIL;
+    machine->G = SECD_NIL;
     machine->C = SECD_NIL;
     machine->D = SECD_NIL;
     machine->dump_stack = SECD_NIL;
@@ -74,6 +76,7 @@ void secd_machine_reset(secd_machine_t *machine) {
     
     machine->S = SECD_NIL;
     machine->E = SECD_NIL;
+    machine->G = SECD_NIL;
     machine->C = SECD_NIL;
     machine->D = SECD_NIL;
     machine->dump_stack = SECD_NIL;

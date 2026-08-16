@@ -2,7 +2,7 @@
     "chip": "esp32c3",
     "description": "Espressif ESP32-C3 single-core RISC-V (RV32IMC) microcontroller",
     "output": {
-        "format": "uf2",
+        "format": "bin",
         "family": "esp32c3"
     },
     "memory": {

@@ -13,13 +13,12 @@ idf_component_register(
         "${SECD_SRC_DIR}/core/symbols.cpp"
         "${SECD_SRC_DIR}/hal/esp32.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/secd_start.cpp"
-        "${CMAKE_CURRENT_LIST_DIR}/secd_bytecode.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/usb.cpp"
     INCLUDE_DIRS
         "${SECD_INC_DIR}"
         "${CMAKE_CURRENT_LIST_DIR}"
     PRIV_REQUIRES
-        cherry-embedded__cherryusb esp_driver_gpio esp_driver_uart esp_driver_i2c esp_timer esp_system freertos
+        app_update cherry-embedded__cherryusb esp_driver_gpio esp_driver_uart esp_driver_i2c esp_partition esp_timer esp_system freertos
 )
 
 # Feature macros must match this board's primitive IDs in the metadata.

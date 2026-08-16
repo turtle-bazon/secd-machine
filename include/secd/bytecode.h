@@ -79,6 +79,10 @@ typedef enum {
     OP_LD    = 0x40,  /* Load from environment */
     OP_ST    = 0x41,  /* Store to environment */
     OP_ARGS  = 0x42,  /* Pop arguments into env */
+
+    /* Global environment operations */
+    OP_LDG   = 0x43,  /* Load global: push value from global frame */
+    OP_STG   = 0x44,  /* Store global: set global frame cell */
     
     /* Control flow */
     OP_SEL   = 0x50,  /* Conditional branch */

@@ -58,7 +58,7 @@ void secd_hid_keyboard_tap(uint8_t modifier, uint8_t usage);
 /* HID mouse (unsupported on RP2040: hard -1 add, no-op send) kept for HAL
  * glue uniformity with the ESP32-S3. */
 int  secd_usb_mouse_add(void);
-void secd_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel);
+int  secd_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel);
 
 #ifdef __cplusplus
 }

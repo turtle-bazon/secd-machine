@@ -73,7 +73,8 @@ SAMD21_SRCS = platforms/samd21/main.cpp platforms/samd21/startup_samd21.cpp \
 	src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp src/core/bytecode.cpp \
 	src/core/primitives.cpp src/core/symbols.cpp
 
-# ESP32-C3 SuperMini (ESP-IDF, single-core RISC-V). Bytecode merged into the app image.
+# ESP32-C3 SuperMini (ESP-IDF, single-core RISC-V). Bytecode is appended to the
+# app image at runtime (never compiled in); see link-machine-esp32.
 ESP_IDF_DIR ?= /home/turtle/esp/esp-idf
 ESP32C3_DIR = platforms/esp32
 ESP32C3_BUILD = $(ESP32C3_DIR)/build
@@ -83,7 +84,6 @@ ESP32C3_BIN_RELEASE = $(ESP32C3_BUILD_RELEASE)/secd_machine.bin
 ESP32C3_SRCS = src/hal/esp32.cpp src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp \
 	src/core/bytecode.cpp src/core/primitives.cpp src/core/symbols.cpp \
 	$(ESP32C3_DIR)/components/secd/secd_start.cpp \
-	$(ESP32C3_DIR)/components/secd/secd_bytecode.cpp \
 	$(ESP32C3_DIR)/CMakeLists.txt $(ESP32C3_DIR)/sdkconfig.defaults \
 	$(ESP32C3_DIR)/components/secd/CMakeLists.txt
 
@@ -96,7 +96,7 @@ ESP32S3_BIN_RELEASE = $(ESP32S3_BUILD_RELEASE)/secd_machine.bin
 ESP32S3_SRCS = src/hal/esp32.cpp src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp \
 	src/core/bytecode.cpp src/core/primitives.cpp src/core/symbols.cpp \
 	$(ESP32S3_DIR)/components/secd/secd_start.cpp \
-	$(ESP32S3_DIR)/components/secd/secd_bytecode.cpp \
+	$(ESP32S3_DIR)/components/secd/usb.cpp \
 	$(ESP32S3_DIR)/CMakeLists.txt $(ESP32S3_DIR)/sdkconfig.defaults \
 	$(ESP32S3_DIR)/components/secd/CMakeLists.txt
 
@@ -334,23 +334,32 @@ $(ESP32C3_BIN): $(ESP32C3_SRCS)
 $(ESP32C3_BIN_RELEASE): $(ESP32C3_SRCS)
 	@. $(ESP_IDF_DIR)/export.sh >/dev/null 2>&1 && cd $(ESP32C3_DIR) && idf.py -B build-release -DSECD_DEBUG_BUILD=0 build >/dev/null
 
-$(OUTPUT_DIR)/esp32c3-supermini.machine: $(ESP32C3_BIN) $(META_DIR)/esp32c3-supermini.metadata.json
+# Pack the ESP32-C3 app into the .machine: firmware.bin is the raw app image;
+# bootloader + partition table are bundled so the board flashes in one esptool
+# command. Bytecode is glued after the app image by simple concatenation
+# (cat firmware.bin program.secd > final.bin) and located at runtime by
+# scanning past the image end (see load_bytecode in secd_start.cpp).
+$(OUTPUT_DIR)/esp32c3-supermini.machine: $(ESP32C3_BIN) $(ESP32C3_BUILD)/bootloader/bootloader.bin $(ESP32C3_BUILD)/partition_table/partition-table.bin $(META_DIR)/esp32c3-supermini.metadata.json
 	@mkdir -p $(OUTPUT_DIR)
 	@python3 -c "import zipfile; \
 		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
 		zf.write('$(ESP32C3_BIN)', 'firmware.bin'); \
+		zf.write('$(ESP32C3_BUILD)/bootloader/bootloader.bin', 'bootloader.bin'); \
+		zf.write('$(ESP32C3_BUILD)/partition_table/partition-table.bin', 'partition-table.bin'); \
 		zf.write('$(META_DIR)/esp32c3-supermini.metadata.json', 'metadata.json'); \
 		zf.close()"
-	@echo "Created $@ (firmware.bin + metadata.json)"
+	@echo "Created $@ (firmware.bin + bootloader + partition table)"
 
-$(OUTPUT_DIR)/esp32c3-supermini.release.machine: $(ESP32C3_BIN_RELEASE) $(META_DIR)/esp32c3-supermini.metadata.json
+$(OUTPUT_DIR)/esp32c3-supermini.release.machine: $(ESP32C3_BIN_RELEASE) $(ESP32C3_BUILD_RELEASE)/bootloader/bootloader.bin $(ESP32C3_BUILD_RELEASE)/partition_table/partition-table.bin $(META_DIR)/esp32c3-supermini.metadata.json
 	@mkdir -p $(OUTPUT_DIR)
 	@python3 -c "import zipfile; \
 		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
 		zf.write('$(ESP32C3_BIN_RELEASE)', 'firmware.bin'); \
+		zf.write('$(ESP32C3_BUILD_RELEASE)/bootloader/bootloader.bin', 'bootloader.bin'); \
+		zf.write('$(ESP32C3_BUILD_RELEASE)/partition_table/partition-table.bin', 'partition-table.bin'); \
 		zf.write('$(META_DIR)/esp32c3-supermini.metadata.json', 'metadata.json'); \
 		zf.close()"
-	@echo "Created $@ (firmware.bin + metadata.json, release)"
+	@echo "Created $@ (firmware.bin + bootloader + partition table, release)"
 
 # ESP32-S3 Stamp-S3A: build firmware with ESP-IDF, then zip .machine.
 $(ESP32S3_BIN): $(ESP32S3_SRCS)
@@ -359,55 +368,53 @@ $(ESP32S3_BIN): $(ESP32S3_SRCS)
 $(ESP32S3_BIN_RELEASE): $(ESP32S3_SRCS)
 	@. $(ESP_IDF_DIR)/export.sh >/dev/null 2>&1 && cd $(ESP32S3_DIR) && idf.py -B build-release -DSECD_DEBUG_BUILD=0 build >/dev/null
 
-$(OUTPUT_DIR)/stamp-s3a.machine: $(ESP32S3_BIN) $(META_DIR)/stamp-s3a.metadata.json
+# Pack the ESP32-S3 app into the .machine: firmware.bin is the raw app image;
+# bytecode is glued right after it by simple concatenation (cat firmware.bin
+# program.secd > final.bin) and located at runtime by scanning past the image
+# end (see load_bytecode) — so firmware size changes never break programs.
+# The bootloader + partition table are bundled so the board flashes in one
+# esptool command.
+$(OUTPUT_DIR)/stamp-s3a.machine: $(ESP32S3_BIN) $(ESP32S3_BUILD)/bootloader/bootloader.bin $(ESP32S3_BUILD)/partition_table/partition-table.bin $(META_DIR)/stamp-s3a.metadata.json
 	@mkdir -p $(OUTPUT_DIR)
 	@python3 -c "import zipfile; \
 		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
 		zf.write('$(ESP32S3_BIN)', 'firmware.bin'); \
+		zf.write('$(ESP32S3_BUILD)/bootloader/bootloader.bin', 'bootloader.bin'); \
+		zf.write('$(ESP32S3_BUILD)/partition_table/partition-table.bin', 'partition-table.bin'); \
 		zf.write('$(META_DIR)/stamp-s3a.metadata.json', 'metadata.json'); \
 		zf.close()"
-	@echo "Created $@ (firmware.bin + metadata.json)"
+	@echo "Created $@ (firmware.bin + bootloader + partition table)"
 
-$(OUTPUT_DIR)/stamp-s3a.release.machine: $(ESP32S3_BIN_RELEASE) $(META_DIR)/stamp-s3a.metadata.json
+$(OUTPUT_DIR)/stamp-s3a.release.machine: $(ESP32S3_BIN_RELEASE) $(ESP32S3_BUILD_RELEASE)/bootloader/bootloader.bin $(ESP32S3_BUILD_RELEASE)/partition_table/partition-table.bin $(META_DIR)/stamp-s3a.metadata.json
 	@mkdir -p $(OUTPUT_DIR)
 	@python3 -c "import zipfile; \
 		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
 		zf.write('$(ESP32S3_BIN_RELEASE)', 'firmware.bin'); \
+		zf.write('$(ESP32S3_BUILD_RELEASE)/bootloader/bootloader.bin', 'bootloader.bin'); \
+		zf.write('$(ESP32S3_BUILD_RELEASE)/partition_table/partition-table.bin', 'partition-table.bin'); \
 		zf.write('$(META_DIR)/stamp-s3a.metadata.json', 'metadata.json'); \
 		zf.close()"
-	@echo "Created $@ (firmware.bin + metadata.json, release)"
+	@echo "Created $@ (firmware.bin + bootloader + partition table, release)"
 
-# Merge a compiled Lisp program into the ESP32-C3 app image.
-# $$1 = example source, $$2 = target board name.
-define ESP32C3-MERGE
-	@echo "Compiling $(1) for esp32c3-supermini and merging into the app image..."
-	@sbcl --non-interactive --load $(SECD_LISP_ASD) \
-		--eval '(asdf:load-system :secd-lisp)' \
-		--eval '(secd-lisp:write-bytecode (secd-lisp:secd-compile-file "$(1)" :target :esp32c3-supermini) "$(2)")' \
-		|| (echo "compile failed"; exit 1)
-	@python3 -c "import sys; d=open('$(2)','rb').read(); c=', '.join('0x%02x'%b for b in d); open('$(ESP32C3_DIR)/components/secd/secd_bytecode.cpp','w').write('/* generated */\\n#include <stdint.h>\\nextern \"C\" const uint8_t secd_bytecode[] = { '+c+' };\\nextern \"C\" const uint32_t secd_bytecode_len = '+str(len(d))+';\\n')"
-	@. $(ESP_IDF_DIR)/export.sh >/dev/null 2>&1 && cd $(ESP32C3_DIR) && idf.py build >/dev/null
-	@echo "Merged $(1) into $(ESP32C3_BIN)"
+# Link a compiled Lisp program into a final ESP32 flash image without rebuilding
+# the firmware: the CLI pads+concats firmware.bin with the SECD-header bytecode
+# (final .bin) and also writes the standalone .secd so the same program can be
+# re-cat'd later. Bytecode is located at runtime by scanning past the app image
+# end, so firmware size changes never break programs.
+# $$1 = target board, $$2 = example source, $$3 = entry point, $$4 = output base.
+define ESP32-LINK
+	@$(SECD_LISP_DIR)/build/secd-lisp -t $(1) --entry "$(3)" -o $(4).bin $(2)
+	@echo "Linked $(4).bin (+ $(4).secd)"
 endef
 
 esp32c3-blink: $(OUTPUT_DIR)/esp32c3-supermini.machine
-	$(call ESP32C3-MERGE,$(SECD_LISP_DIR)/examples/rp2040-blink.lisp,/tmp/esp32c3-blink.bin)
-
-# Merge a compiled Lisp program into the ESP32-S3 app image.
-# $$1 = example source, $$2 = target board name.
-define ESP32S3-MERGE
-	@echo "Compiling $(1) for stamp-s3a and merging into the app image..."
-	@sbcl --non-interactive --load $(SECD_LISP_ASD) \
-		--eval '(asdf:load-system :secd-lisp)' \
-		--eval '(secd-lisp:write-bytecode (secd-lisp:secd-compile-file "$(1)" :target :stamp-s3a) "$(2)")' \
-		|| (echo "compile failed"; exit 1)
-	@python3 -c "import sys; d=open('$(2)','rb').read(); c=', '.join('0x%02x'%b for b in d); open('$(ESP32S3_DIR)/components/secd/secd_bytecode.cpp','w').write('/* generated */\\n#include <stdint.h>\\nextern \"C\" const uint8_t secd_bytecode[] = { '+c+' };\\nextern \"C\" const uint32_t secd_bytecode_len = '+str(len(d))+';\\n')"
-	@. $(ESP_IDF_DIR)/export.sh >/dev/null 2>&1 && cd $(ESP32S3_DIR) && idf.py build >/dev/null
-	@echo "Merged $(1) into $(ESP32S3_BIN)"
-endef
+	$(call ESP32-LINK,esp32c3-supermini,$(SECD_LISP_DIR)/examples/rp2040-blink.lisp,SECD:MAIN,/tmp/esp32c3-blink)
 
 esp32s3-blink: $(OUTPUT_DIR)/stamp-s3a.machine
-	$(call ESP32S3-MERGE,$(SECD_LISP_DIR)/examples/rp2040-blink.lisp,/tmp/esp32s3-blink.bin)
+	$(call ESP32-LINK,stamp-s3a,$(SECD_LISP_DIR)/examples/rp2040-blink.lisp,SECD:MAIN,/tmp/stamp-s3a-final)
+
+esp32s3-cardputer: $(OUTPUT_DIR)/stamp-s3a.machine
+	$(call ESP32-LINK,stamp-s3a,$(SECD_LISP_DIR)/examples/cardputer-input.lisp,CARDPUTER-INPUT:MAIN,/tmp/stamp-s3a-cardputer)
 
 clean:
 	rm -f $(OBJS) $(TEST_OBJS) $(LIB) run_tests

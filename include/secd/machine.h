@@ -52,6 +52,7 @@ extern "C" {
 typedef struct {
     secd_value_t S;     /* Stack */
     secd_value_t E;     /* Environment */
+    secd_value_t G;     /* Global environment (flat list of global cells) */
     secd_value_t C;     /* Control (instruction pointer) */
     secd_value_t D;     /* Dump (saved state) */
     
