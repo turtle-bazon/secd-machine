@@ -32,6 +32,17 @@ extern "C" {
 
 #define USBD_VID   0xFFFF
 #define USBD_PID   0x0001
+
+/* Device identity, settable from Lisp via secd_usb_set_* (called before
+ * %usb-start). Defaults match the historical "ffff:0001 SECD SECD Machine"
+ * so behavior is unchanged until a Lisp program overrides them. */
+static uint16_t s_vid = USBD_VID;
+static uint16_t s_pid = USBD_PID;
+static char s_mfc[32] = "SECD";
+static char s_product[32] = "SECD Machine";
+static char s_serial[32] = "000000000001";
+static uint8_t device_descriptor[18];
+
 #define USBD_MAX_POWER 100
 #define CDC_MAX_MPS 64
 
@@ -70,8 +81,7 @@ static volatile bool    s_hid = false;
 static volatile bool    s_started = false;
 
 /* ---------------------------------------------------------------- descriptors */
-static const uint8_t device_descriptor[] = {
-    USB_DEVICE_DESCRIPTOR_INIT(USB_2_0, 0x00, 0x00, 0x00, USBD_VID, USBD_PID, 0x0001, 0x01)};
+/* device_descriptor[] is filled by device_descriptor_cb() from s_vid/s_pid. */
 
 /* One CDC-ACM bridge descriptor per supported port (66 bytes each). */
 static const uint8_t acm_desc[SECD_USB_MAX_PORTS][CDC_ACM_DESCRIPTOR_LEN] = {
@@ -98,10 +108,10 @@ static const uint8_t hid_kbd_desc[HID_KEYBOARD_DESCRIPTOR_LEN] = {
                                  HID_EP, HID_EP_SIZE, HID_EP_INTERVAL)};
 
 static const char *string_descriptors[] = {
-    (const char[]){0x09, 0x04}, /* LangID */
-    "SECD",                     /* Manufacturer */
-    "SECD Machine",             /* Product */
-    "000000000001",             /* Serial */
+    (const char[]){0x09, 0x04}, /* Langid */
+    s_mfc,                      /* Manufacturer (settable from Lisp) */
+    s_product,                  /* Product (settable from Lisp) */
+    s_serial,                   /* Serial (settable from Lisp) */
 };
 
 static uint8_t config_buf[9 + CDC_ACM_DESCRIPTOR_LEN * SECD_USB_MAX_PORTS +
@@ -137,7 +147,27 @@ static uint16_t build_config_descriptor(void)
 }
 
 /* ----------------------------------------------------------- USB callbacks */
-static const uint8_t *device_descriptor_cb(uint8_t speed) { (void)speed; return device_descriptor; }
+static const uint8_t *device_descriptor_cb(uint8_t speed)
+{
+    (void)speed;
+    device_descriptor[0]  = 0x12;                                /* bLength */
+    device_descriptor[1]  = USB_DESCRIPTOR_TYPE_DEVICE;         /* bDescriptorType */
+    device_descriptor[2]  = 0x00; device_descriptor[3]  = 0x02; /* bcdUSB 0x0200 */
+    device_descriptor[4]  = 0x00;                               /* bDeviceClass */
+    device_descriptor[5]  = 0x00;                               /* bDeviceSubClass */
+    device_descriptor[6]  = 0x00;                               /* bDeviceProtocol */
+    device_descriptor[7]  = 0x40;                               /* bMaxPacketSize0 */
+    device_descriptor[8]  = (uint8_t)(s_vid & 0xFF);
+    device_descriptor[9]  = (uint8_t)(s_vid >> 8);
+    device_descriptor[10] = (uint8_t)(s_pid & 0xFF);
+    device_descriptor[11] = (uint8_t)(s_pid >> 8);
+    device_descriptor[12] = 0x00; device_descriptor[13] = 0x01; /* bcdDevice 0x0100 */
+    device_descriptor[14] = USB_STRING_MFC_INDEX;
+    device_descriptor[15] = USB_STRING_PRODUCT_INDEX;
+    device_descriptor[16] = USB_STRING_SERIAL_INDEX;
+    device_descriptor[17] = 0x01;                               /* bNumConfigurations */
+    return device_descriptor;
+}
 static const uint8_t *config_descriptor_cb(uint8_t speed) { (void)speed; return config_buf; }
 static const char *string_descriptor_cb(uint8_t speed, uint8_t index)
 {
@@ -225,6 +255,21 @@ static void send_on(struct cdc_port *c, uint8_t ep_in, const uint8_t *buf, uint1
     c->tx_busy = true;
     usbd_ep_start_write(0, ep_in, buf, len);
     while (c->tx_busy) { /* ISR completes the transfer */ }
+}
+
+/* Device identity setters (called from Lisp before %usb-start). The values
+ * are read when the host enumerates, so changing them after start has no
+ * effect until the next re-enumeration. */
+void secd_usb_set_vid(uint16_t vid) { s_vid = vid; }
+void secd_usb_set_pid(uint16_t pid) { s_pid = pid; }
+void secd_usb_set_manufacturer(const char *s) {
+    if (s) { strncpy(s_mfc, s, sizeof(s_mfc) - 1); s_mfc[sizeof(s_mfc) - 1] = 0; }
+}
+void secd_usb_set_product(const char *s) {
+    if (s) { strncpy(s_product, s, sizeof(s_product) - 1); s_product[sizeof(s_product) - 1] = 0; }
+}
+void secd_usb_set_serial(const char *s) {
+    if (s) { strncpy(s_serial, s, sizeof(s_serial) - 1); s_serial[sizeof(s_serial) - 1] = 0; }
 }
 
 void secd_usb_init(void)

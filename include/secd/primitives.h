@@ -47,8 +47,15 @@ typedef struct {
     uint8_t id;             /* Numeric ID for bytecode */
 } secd_prim_entry_t;
 
-/* Maximum number of primitives */
-#define SECD_PRIMITIVES_MAX 64
+/* Maximum number of primitives (uint8_t id space, so <= 255).
+ *
+ * HAL primitives are assigned sequential ids starting at 15 (see the
+ * per-chip JSON metadata). A small set of UNIVERSAL runtime primitives
+ * (present in every firmware image) is assigned FIXED high ids outside
+ * the HAL range so that programs compiled against them are portable
+ * across every target. utf16-enc/utf16-dec use 200/201. The registry is
+ * therefore sized to cover the fixed universal range. */
+#define SECD_PRIMITIVES_MAX 255
 
 /* Primitive registry */
 typedef struct {
@@ -61,6 +68,13 @@ void secd_prim_init(secd_prim_registry_t *registry);
 
 /* Register a primitive */
 int secd_register_prim(secd_prim_registry_t *registry, const char *name, secd_prim_fn fn);
+
+/* Register a primitive at a FIXED id (used for universal runtime
+ * primitives whose ids must be stable across every firmware image,
+ * e.g. utf16-enc/utf16-dec at 200/201). The registry high-water mark is
+ * advanced to cover id so subsequent id-based lookups stay valid. */
+int secd_register_prim_at(secd_prim_registry_t *registry, const char *name,
+                          secd_prim_fn fn, uint8_t id);
 
 /* Find primitive by name */
 secd_prim_entry_t* secd_find_prim(secd_prim_registry_t *registry, const char *name);

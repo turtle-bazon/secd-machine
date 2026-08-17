@@ -39,6 +39,17 @@ void secd_usb_start(void);
  * secd_usb_init()+adds()+secd_usb_start() (as done by Lisp) re-enumerates. */
 void secd_usb_deinit(void);
 
+/* Lisp-settable USB device identity. Call before secd_usb_start(); the host
+ * reads these at enumeration time. Strings are NUL-terminated C strings. */
+void secd_usb_set_vid(uint16_t vid);
+void secd_usb_set_pid(uint16_t pid);
+/* String setters take a pre-encoded UTF-16LE byte buffer (as produced by the
+ * Lisp to-c-string helper) and its byte length. A length is required because
+ * UTF-16LE contains embedded NUL bytes that strlen would truncate. */
+void secd_usb_set_manufacturer(const uint8_t *data, uint16_t len);
+void secd_usb_set_product(const uint8_t *data, uint16_t len);
+void secd_usb_set_serial(const uint8_t *data, uint16_t len);
+
 /* True once the host has configured the device. */
 bool secd_usb_configured(void);
 

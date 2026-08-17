@@ -244,20 +244,29 @@ static bool usbd_get_descriptor(uint8_t busid, uint16_t type_index, uint8_t **da
                     return true;
                 }
 
-                uint16_t str_size = strlen(string);
-                uint16_t total_size = 2 * str_size + 2;
+                /* Pass the pre-encoded UTF-16LE buffer through verbatim. The
+                 * bytes already ARE the UTF-16LE code units (produced by the
+                 * Lisp to-c-string helper); we only need the explicit byte
+                 * length because UTF-16LE contains embedded NUL bytes that
+                 * strlen would truncate. */
+                extern uint16_t g_secd_str_len[4];
+                uint16_t blen = g_secd_str_len[index];
+                if (blen + 2 > CONFIG_USBDEV_REQUEST_BUFFER_LEN) {
+                    USB_LOG_ERR("string size overflow\r\n");
+                    return false;
+                }
+                uint8_t *dst = *data + 2;
+                for (uint16_t i = 0; i < blen; i++) {
+                    dst[i] = (uint8_t)string[i];
+                }
+                uint16_t total_size = (uint16_t)(blen + 2);
                 if (total_size > CONFIG_USBDEV_REQUEST_BUFFER_LEN) {
                     USB_LOG_ERR("string size overflow\r\n");
                     return false;
                 }
 
-                (*data)[0] = total_size;
+                (*data)[0] = (uint8_t)total_size;
                 (*data)[1] = USB_DESCRIPTOR_TYPE_STRING;
-
-                for (uint16_t i = 0; i < str_size; i++) {
-                    (*data)[2 * i + 2] = string[i];
-                    (*data)[2 * i + 3] = 0x00;
-                }
 
                 *len = total_size;
                 return true;

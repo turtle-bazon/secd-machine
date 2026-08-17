@@ -49,7 +49,12 @@
         "%serial-write": {"id": 35, "args": 2},
         "%serial-read": {"id": 36, "args": 1},
         "%serial-avail": {"id": 37, "args": 1},
-        "%i2c-write-v": {"id": 38, "args": 2}
+        "%i2c-write-v": {"id": 38, "args": 2},
+        "%usb-vid": {"id": 41, "args": 1},
+        "%usb-pid": {"id": 42, "args": 1},
+        "%usb-manufacturer": {"id": 43, "args": 1},
+        "%usb-product": {"id": 44, "args": 1},
+        "%usb-serial": {"id": 45, "args": 1}
     },
     "usb": {
         "device": true,

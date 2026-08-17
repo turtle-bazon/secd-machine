@@ -1,0 +1,23 @@
+{
+  "description": "Board-independent UNIVERSAL SECD runtime primitives. These are present in EVERY firmware image at FIXED ids, so a program compiled against this file runs unchanged on any target. Board-specific HAL primitives (ids >= 15) live in the per-chip JSON files; this file is the only source of truth for the portable runtime ids.",
+  "note": "utf16-enc/utf16-dec are registered in src/core/primitives.cpp via secd_register_prim_at at 200/201, unconditionally (every firmware). Core VM ops 0-14 are registered sequentially first in every firmware, so their ids are stable here too.",
+  "primitives": {
+    "car": {"id": 0, "args": 1},
+    "cdr": {"id": 1, "args": 1},
+    "cons": {"id": 2, "args": 2},
+    "list": {"id": 3, "args": -1},
+    "+": {"id": 4, "args": 2},
+    "-": {"id": 5, "args": 2},
+    "*": {"id": 6, "args": 2},
+    "/": {"id": 7, "args": 2},
+    "%": {"id": 8, "args": 2},
+    "=": {"id": 9, "args": 2},
+    "<": {"id": 10, "args": 2},
+    ">": {"id": 11, "args": 2},
+    "null?": {"id": 12, "args": 1},
+    "pair?": {"id": 13, "args": 1},
+    "atom?": {"id": 14, "args": 1},
+    "utf16-enc": {"id": 200, "args": 1},
+    "utf16-dec": {"id": 201, "args": 1}
+  }
+}

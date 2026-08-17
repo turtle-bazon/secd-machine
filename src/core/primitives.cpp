@@ -52,6 +52,28 @@ int secd_register_prim(secd_prim_registry_t *registry, const char *name, secd_pr
     return 0;
 }
 
+int secd_register_prim_at(secd_prim_registry_t *registry, const char *name,
+                          secd_prim_fn fn, uint8_t id) {
+    if (!registry || !name || !fn) return -1;
+
+    if (id >= SECD_PRIMITIVES_MAX) {
+        return -1; /* Fixed id out of range */
+    }
+
+    secd_prim_entry_t *entry = &registry->entries[id];
+    entry->name = name;
+    entry->fn = fn;
+    entry->id = id;
+
+    /* Advance the high-water mark so id-based lookups for this slot
+     * (and everything below it) remain valid. */
+    if (registry->count <= id) {
+        registry->count = (uint8_t)(id + 1);
+    }
+
+    return 0;
+}
+
 secd_prim_entry_t* secd_find_prim(secd_prim_registry_t *registry, const char *name) {
     if (!registry || !name) return NULL;
     
@@ -388,6 +410,48 @@ secd_value_t prim_hid_mouse(secd_heap_t *heap, secd_value_t args) {
     return secd_make_fixnum((int16_t)rc);
 }
 
+/* Lisp-settable USB device identity. Strings arrive as byte-vectors (the
+ * runtime's string type); we copy up to 31 bytes and NUL-terminate. Called
+ * before %usb-start so the host sees the new values at enumeration. */
+secd_value_t prim_usb_set_vid(secd_heap_t *heap, secd_value_t args) {
+    (void)heap;
+    hal_usb_set_vid((uint16_t)secd_fixnum_value(get_arg1(heap, args)));
+    return SECD_NIL;
+}
+
+secd_value_t prim_usb_set_pid(secd_heap_t *heap, secd_value_t args) {
+    (void)heap;
+    hal_usb_set_pid((uint16_t)secd_fixnum_value(get_arg1(heap, args)));
+    return SECD_NIL;
+}
+
+ secd_value_t prim_usb_set_mfr(secd_heap_t *heap, secd_value_t args) {
+     secd_value_t v = get_arg1(heap, args);
+     if (secd_is_bytevec(v)) {
+         secd_bytevec_t *bv = secd_bytevec_get(heap, secd_get_index(v));
+         if (bv) hal_usb_set_manufacturer(bv->data, bv->len);
+     }
+     return SECD_NIL;
+ }
+
+ secd_value_t prim_usb_set_product(secd_heap_t *heap, secd_value_t args) {
+     secd_value_t v = get_arg1(heap, args);
+     if (secd_is_bytevec(v)) {
+         secd_bytevec_t *bv = secd_bytevec_get(heap, secd_get_index(v));
+         if (bv) hal_usb_set_product(bv->data, bv->len);
+     }
+     return SECD_NIL;
+ }
+
+ secd_value_t prim_usb_set_serial(secd_heap_t *heap, secd_value_t args) {
+     secd_value_t v = get_arg1(heap, args);
+     if (secd_is_bytevec(v)) {
+         secd_bytevec_t *bv = secd_bytevec_get(heap, secd_get_index(v));
+         if (bv) hal_usb_set_serial(bv->data, bv->len);
+     }
+     return SECD_NIL;
+ }
+
 secd_value_t prim_serial_write(secd_heap_t *heap, secd_value_t args) {
     (void)heap;
     int port = (int)secd_fixnum_value(get_arg1(heap, args));
@@ -453,6 +517,121 @@ secd_value_t prim_wave_play(secd_heap_t *heap, secd_value_t args) {
     }
     hal_wave_play((int)pin, (int)start_level, duration_ns, count);
     return SECD_NIL;
+}
+
+
+/*
+ * UTF-16LE encoding / decoding primitives (utf16-enc / utf16-dec).
+ *
+ * Convert between SECD UTF-8 byte-vectors and UTF-16LE byte-vectors.
+ * UTF-16LE is what USB string descriptors require. These are UNIVERSAL
+ * runtime primitives: present in EVERY firmware image (S3, C3, rp2040, ...),
+ * not HAL-specific. They are bound from Lisp via `def-c-fun`.
+ */
+static secd_value_t prim_utf16_enc(secd_heap_t *heap,
+                                    secd_value_t args) {
+    secd_value_t in = get_arg1(heap, args);
+    if (!secd_is_bytevec(in)) {
+        return SECD_NIL;
+    }
+    secd_bytevec_t *vin = secd_bytevec_get(heap, secd_get_index(in));
+    if (!vin) return SECD_NIL;
+
+    size_t in_len = vin->len;
+    size_t units = 0;
+    for (size_t i = 0; i < in_len;) {
+        int c = vin->data[i];
+        i++;
+        if (c >= 0xF0) { i += 3; units += 2; }
+        else if (c >= 0xE0) { i += 2; units += 1; }
+        else if (c >= 0xC0) { i += 1; units += 1; }
+        else { units += 1; }
+    }
+
+    uint16_t slot = secd_bytevec_alloc(heap, (uint16_t)(units * 2));
+    if (slot == SECD_BYTEVEC_INVALID) return SECD_NIL;
+    size_t o = 0;
+    for (size_t i = 0; i < in_len;) {
+        int c = vin->data[i];
+        i++;
+        if (c >= 0xF0) {
+            int c1 = vin->data[i++];
+            int c2 = vin->data[i++];
+            int c3 = vin->data[i++];
+            int cp = 0x10000 + ((c & 0x07) << 18) + ((c1 & 0x3F) << 12)
+                     + ((c2 & 0x3F) << 6) + (c3 & 0x3F);
+            int hi = 0xD800 + ((cp - 0x10000) >> 10);
+            int lo = 0xDC00 + ((cp - 0x10000) & 0x3FF);
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(hi & 0xFF));
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(hi >> 8));
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(lo & 0xFF));
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(lo >> 8));
+        } else if (c >= 0xE0) {
+            int c1 = vin->data[i++];
+            int c2 = vin->data[i++];
+            int cp = ((c & 0x0F) << 12) + ((c1 & 0x3F) << 6) + (c2 & 0x3F);
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(cp & 0xFF));
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(cp >> 8));
+        } else if (c >= 0xC0) {
+            int c1 = vin->data[i++];
+            int cp = ((c & 0x1F) << 6) + (c1 & 0x3F);
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(cp & 0xFF));
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(cp >> 8));
+        } else {
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(c & 0xFF));
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)0);
+        }
+    }
+    return secd_make_bytevec(slot);
+}
+
+static secd_value_t prim_utf16_dec(secd_heap_t *heap,
+                                    secd_value_t args) {
+    secd_value_t in = get_arg1(heap, args);
+    if (!secd_is_bytevec(in)) {
+        return SECD_NIL;
+    }
+    secd_bytevec_t *vin = secd_bytevec_get(heap, secd_get_index(in));
+    if (!vin) return SECD_NIL;
+
+    size_t in_len = vin->len;
+    size_t units = in_len / 2;
+    size_t bytes = 0;
+    for (size_t i = 0; i < units;) {
+        int u = vin->data[i * 2] | (vin->data[i * 2 + 1] << 8);
+        i++;
+        if (u >= 0xD800 && u <= 0xDBFF) { i += 1; bytes += 4; }
+        else if (u >= 0x0800) { bytes += 3; }
+        else if (u >= 0x0080) { bytes += 2; }
+        else { bytes += 1; }
+    }
+
+    uint16_t slot = secd_bytevec_alloc(heap, (uint16_t)bytes);
+    if (slot == SECD_BYTEVEC_INVALID) return SECD_NIL;
+    size_t o = 0;
+    for (size_t i = 0; i < units;) {
+        int u = vin->data[i * 2] | (vin->data[i * 2 + 1] << 8);
+        i++;
+        if (u >= 0xD800 && u <= 0xDBFF) {
+            int lo = vin->data[i * 2] | (vin->data[i * 2 + 1] << 8);
+            i++;
+            int cp = 0x10000 + ((u - 0xD800) << 10) + (lo - 0xDC00);
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(0xF0 | (cp >> 18)));
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(0x80 | ((cp >> 12) & 0x3F)));
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(0x80 | ((cp >> 6) & 0x3F)));
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(0x80 | (cp & 0x3F)));
+        } else if (u >= 0x0800) {
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(0xE0 | (u >> 12)));
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(0x80 | ((u >> 6) & 0x3F)));
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(0x80 | (u & 0x3F)));
+        } else if (u >= 0x0080) {
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(0xC0 | (u >> 6)));
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)(0x80 | (u & 0x3F)));
+        } else {
+            secd_bytevec_write(heap, slot, (uint16_t)(o++), (uint8_t)u);
+        }
+    }
+    return secd_make_bytevec(slot);
 }
 
 /* Register all built-in primitives */
@@ -534,5 +713,23 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
     /* Must be sorted by name for lookups and appears after %hid-mouse;
        ids on S3: %usb-mouse-add = 40, %hid-mouse = 39. */
     secd_register_prim(registry, "%usb-mouse-add", prim_usb_mouse_add);
+    /* Lisp-settable USB device identity (VID/PID/strings), called before
+     * %usb-start. Registered last so ids stay stable on every HID board. */
+    secd_register_prim(registry, "%usb-vid", prim_usb_set_vid);
+    secd_register_prim(registry, "%usb-pid", prim_usb_set_pid);
+    secd_register_prim(registry, "%usb-manufacturer", prim_usb_set_mfr);
+    secd_register_prim(registry, "%usb-product", prim_usb_set_product);
+    secd_register_prim(registry, "%usb-serial", prim_usb_set_serial);
+
+    /* Software (non-HAL) runtime helpers, present in every firmware build. */
 #endif
+
+    /* Universal software primitives — registered UNCONDITIONALLY so they
+       exist in EVERY firmware image (S3, C3, rp2040, ...). Part of the
+       portable runtime, not HAL. Bound from Lisp via `def-c-fun`.
+       They use FIXED high ids (200/201) so the bytecode id is identical
+       on every target; programs using them are portable. See
+       targets/machine-runtime.json. */
+    secd_register_prim_at(registry, "utf16-enc", prim_utf16_enc, 200);
+    secd_register_prim_at(registry, "utf16-dec", prim_utf16_dec, 201);
 }

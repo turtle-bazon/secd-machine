@@ -71,6 +71,34 @@ static void wait_tx(volatile bool *busy)
 
 #define USBD_VID   0xFFFF
 #define USBD_PID   0x0001
+
+/* Device identity, settable from Lisp via secd_usb_set_* (called before
+ * %usb-start). Defaults match the historical "ffff:0001 SECD SECD Machine"
+ * so behavior is unchanged until a Lisp program overrides them. */
+static uint16_t s_vid = USBD_VID;
+static uint16_t s_pid = USBD_PID;
+/* Device identity string buffers. Values come pre-encoded as UTF-16LE
+ * (from the Lisp to-c-string helper), so they are byte buffers, not C
+ * strings. g_secd_str_len carries the byte length because UTF-16LE contains
+ * embedded NUL bytes that strlen would truncate. Indices match the USB
+ * string descriptor indices: 1=manufacturer, 2=product, 3=serial. */
+static char  s_mfc[128];
+static char  s_product[128];
+static char  s_serial[128];
+uint16_t     g_secd_str_len[4] = { 2, 0, 0, 0 };   /* [0]=langid length */
+
+/* Fill DST (a UTF-16LE buffer) from an ASCII default and return its length. */
+static uint16_t set_default_utf16(char *dst, const char *ascii)
+{
+    uint16_t n = 0;
+    for (const char *p = ascii; *p && n + 1 < (int)sizeof(s_mfc); p++) {
+        dst[n++] = *p;       /* low byte */
+        dst[n++] = 0;        /* high byte (ASCII fits in one UTF-16 unit) */
+    }
+    return n;
+}
+static uint8_t device_descriptor[18];
+
 #define USBD_MAX_POWER 100
 #define CDC_MAX_MPS 64
 
@@ -116,8 +144,7 @@ static volatile bool    s_mouse = false;
 static volatile bool    s_started = false;
 
 /* ---------------------------------------------------------------- descriptors */
-static const uint8_t device_descriptor[] = {
-    USB_DEVICE_DESCRIPTOR_INIT(USB_2_0, 0x00, 0x00, 0x00, USBD_VID, USBD_PID, 0x0001, 0x01)};
+/* device_descriptor[] is filled by device_descriptor_cb() from s_vid/s_pid. */
 
 /* One CDC-ACM bridge descriptor per supported port (66 bytes each). */
 static const uint8_t acm_desc[SECD_USB_MAX_PORTS][CDC_ACM_DESCRIPTOR_LEN] = {
@@ -158,9 +185,9 @@ static const uint8_t hid_mouse_desc[HID_MOUSE_DESCRIPTOR_LEN] = {
 
 static const char *string_descriptors[] = {
     (const char[]){0x09, 0x04}, /* Langid */
-    "SECD",                     /* Manufacturer */
-    "SECD Machine",             /* Product */
-    "000000000001",             /* Serial */
+    s_mfc,                      /* Manufacturer (settable from Lisp) */
+    s_product,                  /* Product (settable from Lisp) */
+    s_serial,                   /* Serial (settable from Lisp) */
 };
 
 /* DMA-aligned: the DWC2 glue copies from/to DRAM and requires data buffers to
@@ -205,7 +232,27 @@ static uint16_t build_config_descriptor(void)
 }
 
 /* ----------------------------------------------------------- USB callbacks */
-static const uint8_t *device_descriptor_cb(uint8_t speed) { (void)speed; return device_descriptor; }
+static const uint8_t *device_descriptor_cb(uint8_t speed)
+{
+    (void)speed;
+    device_descriptor[0]  = 0x12;                                /* bLength */
+    device_descriptor[1]  = USB_DESCRIPTOR_TYPE_DEVICE;         /* bDescriptorType */
+    device_descriptor[2]  = 0x00; device_descriptor[3]  = 0x02; /* bcdUSB 0x0200 */
+    device_descriptor[4]  = 0x00;                               /* bDeviceClass */
+    device_descriptor[5]  = 0x00;                               /* bDeviceSubClass */
+    device_descriptor[6]  = 0x00;                               /* bDeviceProtocol */
+    device_descriptor[7]  = 0x40;                               /* bMaxPacketSize0 */
+    device_descriptor[8]  = (uint8_t)(s_vid & 0xFF);
+    device_descriptor[9]  = (uint8_t)(s_vid >> 8);
+    device_descriptor[10] = (uint8_t)(s_pid & 0xFF);
+    device_descriptor[11] = (uint8_t)(s_pid >> 8);
+    device_descriptor[12] = 0x00; device_descriptor[13] = 0x01; /* bcdDevice 0x0100 */
+    device_descriptor[14] = USB_STRING_MFC_INDEX;
+    device_descriptor[15] = USB_STRING_PRODUCT_INDEX;
+    device_descriptor[16] = USB_STRING_SERIAL_INDEX;
+    device_descriptor[17] = 0x01;                               /* bNumConfigurations */
+    return device_descriptor;
+}
 static const uint8_t *config_descriptor_cb(uint8_t speed) { (void)speed; return config_buf; }
 static const char *string_descriptor_cb(uint8_t speed, uint8_t index)
 {
@@ -309,9 +356,37 @@ static void send_on(struct cdc_port *c, uint8_t ep_in, const uint8_t *buf, uint1
     wait_tx(&c->tx_busy);
 }
 
+/* Device identity setters (called from Lisp before %usb-start). The values
+ * are read when the host enumerates, so changing them after start has no
+ * effect until the next re-enumeration. */
+void secd_usb_set_vid(uint16_t vid) { s_vid = vid; }
+void secd_usb_set_pid(uint16_t pid) { s_pid = pid; }
+void secd_usb_set_manufacturer(const uint8_t *data, uint16_t len) {
+    if (!data) return;
+    uint16_t n = len < sizeof(s_mfc) ? len : (uint16_t)(sizeof(s_mfc) - 1);
+    for (uint16_t i = 0; i < n; i++) s_mfc[i] = (char)data[i];
+    g_secd_str_len[1] = n;
+}
+void secd_usb_set_product(const uint8_t *data, uint16_t len) {
+    if (!data) return;
+    uint16_t n = len < sizeof(s_product) ? len : (uint16_t)(sizeof(s_product) - 1);
+    for (uint16_t i = 0; i < n; i++) s_product[i] = (char)data[i];
+    g_secd_str_len[2] = n;
+}
+void secd_usb_set_serial(const uint8_t *data, uint16_t len) {
+    if (!data) return;
+    uint16_t n = len < sizeof(s_serial) ? len : (uint16_t)(sizeof(s_serial) - 1);
+    for (uint16_t i = 0; i < n; i++) s_serial[i] = (char)data[i];
+    g_secd_str_len[3] = n;
+}
+
 void secd_usb_init(void)
 {
     secd_desc_init();
+    /* Default identity strings (ASCII, encoded as UTF-16LE). */
+    g_secd_str_len[1] = set_default_utf16(s_mfc, "SECD");
+    g_secd_str_len[2] = set_default_utf16(s_product, "SECD Machine");
+    g_secd_str_len[3] = set_default_utf16(s_serial, "000000000001");
     usbd_desc_register(0, &secd_descriptor);
     /* Console always present (port 0). */
     s_ports = 1;

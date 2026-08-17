@@ -234,6 +234,12 @@ int hal_usb_serial_read(int port) {
 int hal_usb_serial_available(int port) {
     return secd_serial_available(port);
 }
+
+void hal_usb_set_vid(uint16_t vid) { secd_usb_set_vid(vid); }
+void hal_usb_set_pid(uint16_t pid) { secd_usb_set_pid(pid); }
+void hal_usb_set_manufacturer(const char *s) { secd_usb_set_manufacturer(s); }
+void hal_usb_set_product(const char *s) { secd_usb_set_product(s); }
+void hal_usb_set_serial(const char *s) { secd_usb_set_serial(s); }
 #endif
 
 /* Flash */

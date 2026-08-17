@@ -101,6 +101,15 @@ int  hal_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel);
 int  hal_usb_serial_write(int port, uint8_t byte);
 int  hal_usb_serial_read(int port);
 int  hal_usb_serial_available(int port);
+/* Lisp-settable USB device identity (VID/PID/strings), applied before
+ * hal_usb_start(); the host reads these at enumeration time. */
+void hal_usb_set_vid(uint16_t vid);
+void hal_usb_set_pid(uint16_t pid);
+/* String setters receive a pre-encoded UTF-16LE byte buffer (from the Lisp
+ * to-c-string helper) plus its byte length. */
+void hal_usb_set_manufacturer(const uint8_t *data, uint16_t len);
+void hal_usb_set_product(const uint8_t *data, uint16_t len);
+void hal_usb_set_serial(const uint8_t *data, uint16_t len);
 #endif
 
 /* Flash (for firmware storage) */
