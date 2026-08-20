@@ -297,19 +297,22 @@ secd_value_t prim_i2c_init(secd_heap_t *heap, secd_value_t args) {
     return secd_make_fixnum((int16_t)hal_i2c_init(sda, scl, hz));
 }
 
+/* %i2c-write bus addr (reg bytes...): write up to 32 bytes to the 7-bit
+ * `addr` on bus `bus`. Returns bytes sent, or -1 on NACK/timeout/bad bus. */
 secd_value_t prim_i2c_write(secd_heap_t *heap, secd_value_t args) {
-    uint8_t addr = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
-    secd_value_t node = get_arg2(heap, args);
+    uint8_t bus = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
+    uint8_t addr = (uint8_t)secd_fixnum_value(get_arg2(heap, args));
+    secd_value_t node = get_arg3(heap, args);
     uint8_t buf[32];
     int n = 0;
     while (secd_is_pair(node) && n < 32) {
         buf[n++] = (uint8_t)secd_fixnum_value(secd_car(heap, node));
         node = secd_cdr(heap, node);
     }
-    return secd_make_fixnum((int16_t)hal_i2c_write(addr, buf, (size_t)n));
+    return secd_make_fixnum((int16_t)hal_i2c_write(bus, addr, buf, (size_t)n));
 }
 
-/* %i2c-write-v addr vec: transmit the whole byte-vector verbatim in one
+/* %i2c-write-v bus addr vec: transmit the whole byte-vector verbatim in one
  * transaction. Unlike %i2c-write (list, capped at 32 bytes) this is an
  * unbounded vector upload; the register byte rides as element 0, which suits
  * the BMI270 block-config upload. The byte-vector may be a ROM pool literal
@@ -317,22 +320,24 @@ secd_value_t prim_i2c_write(secd_heap_t *heap, secd_value_t args) {
  * make-vector; the bus runs in polling mode, so transmitting straight from
  * the vector's backing store is safe. */
 secd_value_t prim_i2c_write_vector(secd_heap_t *heap, secd_value_t args) {
-    uint8_t addr = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
-    secd_value_t vec = get_arg2(heap, args);
+    uint8_t bus = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
+    uint8_t addr = (uint8_t)secd_fixnum_value(get_arg2(heap, args));
+    secd_value_t vec = get_arg3(heap, args);
     if (!secd_is_bytevec(vec)) return SECD_NIL;
     secd_bytevec_t *v = secd_bytevec_get(heap, secd_get_index(vec));
     if (!v) return SECD_NIL;
-    int rc = (int)hal_i2c_write(addr, v->data, (size_t)v->len);
+    int rc = (int)hal_i2c_write(bus, addr, v->data, (size_t)v->len);
     return secd_make_fixnum((int16_t)rc);
 }
 
 secd_value_t prim_i2c_read(secd_heap_t *heap, secd_value_t args) {
-    uint8_t addr = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
-    int16_t count = secd_fixnum_value(get_arg2(heap, args));
+    uint8_t bus = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
+    uint8_t addr = (uint8_t)secd_fixnum_value(get_arg2(heap, args));
+    int16_t count = secd_fixnum_value(get_arg3(heap, args));
     if (count < 1) count = 1;
     if (count > 32) count = 32;
     uint8_t buf[32];
-    int got = hal_i2c_read(addr, buf, (size_t)count);
+    int got = hal_i2c_read(bus, addr, buf, (size_t)count);
     if (got < 0) { memset(buf, 0, sizeof(buf)); got = count; }
     uint16_t slot = secd_bytevec_alloc(heap, (uint16_t)got);
     if (slot == SECD_BYTEVEC_INVALID) return SECD_NIL;
@@ -343,19 +348,20 @@ secd_value_t prim_i2c_read(secd_heap_t *heap, secd_value_t args) {
 }
 
 secd_value_t prim_i2c_write_read(secd_heap_t *heap, secd_value_t args) {
-    uint8_t addr = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
-    secd_value_t node = get_arg2(heap, args);
+    uint8_t bus = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
+    uint8_t addr = (uint8_t)secd_fixnum_value(get_arg2(heap, args));
+    secd_value_t node = get_arg3(heap, args);
     uint8_t wbuf[32];
     int wn = 0;
     while (secd_is_pair(node) && wn < 32) {
         wbuf[wn++] = (uint8_t)secd_fixnum_value(secd_car(heap, node));
         node = secd_cdr(heap, node);
     }
-    int16_t count = secd_fixnum_value(get_arg3(heap, args));
+    int16_t count = secd_fixnum_value(get_arg4(heap, args));
     if (count < 1) count = 1;
     if (count > 32) count = 32;
     uint8_t rbuf[32];
-    int got = hal_i2c_write_read(addr, wbuf, (size_t)wn, rbuf, (size_t)count);
+    int got = hal_i2c_write_read(bus, addr, wbuf, (size_t)wn, rbuf, (size_t)count);
     if (got < 0) { memset(rbuf, 0, sizeof(rbuf)); got = count; }
     uint16_t slot = secd_bytevec_alloc(heap, (uint16_t)got);
     if (slot == SECD_BYTEVEC_INVALID) return SECD_NIL;
