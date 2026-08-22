@@ -38,9 +38,9 @@ void secd_usb_deinit(void);
  * reads these at enumeration time. Strings are NUL-terminated C strings. */
 void secd_usb_set_vid(uint16_t vid);
 void secd_usb_set_pid(uint16_t pid);
-void secd_usb_set_manufacturer(const char *s);
-void secd_usb_set_product(const char *s);
-void secd_usb_set_serial(const char *s);
+void secd_usb_set_manufacturer(const uint8_t *data, uint16_t len);
+void secd_usb_set_product(const uint8_t *data, uint16_t len);
+void secd_usb_set_serial(const uint8_t *data, uint16_t len);
 
 /* True once the host has configured the device. */
 bool secd_usb_configured(void);

@@ -38,9 +38,26 @@ extern "C" {
  * so behavior is unchanged until a Lisp program overrides them. */
 static uint16_t s_vid = USBD_VID;
 static uint16_t s_pid = USBD_PID;
-static char s_mfc[32] = "SECD";
-static char s_product[32] = "SECD Machine";
-static char s_serial[32] = "000000000001";
+/* Identity string buffers hold pre-encoded UTF-16LE bytes (from the Lisp
+ * to-c-string helper); g_secd_str_len carries the byte length because
+ * UTF-16LE contains embedded NUL bytes that strlen would truncate.
+ * Indices match the USB string descriptor indices: 1=mfc, 2=product,
+ * 3=serial. Consumed by CherryUSB's usbd_core when serving descriptors. */
+static char  s_mfc[128];
+static char  s_product[128];
+static char  s_serial[128];
+uint16_t     g_secd_str_len[4] = { 2, 0, 0, 0 };   /* [0]=langid length */
+
+/* Fill DST (a UTF-16LE buffer) from an ASCII default and return its length. */
+static uint16_t set_default_utf16(char *dst, const char *ascii)
+{
+    uint16_t n = 0;
+    for (const char *p = ascii; *p && n + 1 < (int)sizeof(s_mfc); p++) {
+        dst[n++] = *p;       /* low byte */
+        dst[n++] = 0;        /* high byte (ASCII fits in one UTF-16 unit) */
+    }
+    return n;
+}
 static uint8_t device_descriptor[18];
 
 #define USBD_MAX_POWER 100
@@ -262,18 +279,31 @@ static void send_on(struct cdc_port *c, uint8_t ep_in, const uint8_t *buf, uint1
  * effect until the next re-enumeration. */
 void secd_usb_set_vid(uint16_t vid) { s_vid = vid; }
 void secd_usb_set_pid(uint16_t pid) { s_pid = pid; }
-void secd_usb_set_manufacturer(const char *s) {
-    if (s) { strncpy(s_mfc, s, sizeof(s_mfc) - 1); s_mfc[sizeof(s_mfc) - 1] = 0; }
+void secd_usb_set_manufacturer(const uint8_t *data, uint16_t len) {
+    if (!data) return;
+    uint16_t n = len < sizeof(s_mfc) ? len : (uint16_t)(sizeof(s_mfc) - 1);
+    for (uint16_t i = 0; i < n; i++) s_mfc[i] = (char)data[i];
+    g_secd_str_len[1] = n;
 }
-void secd_usb_set_product(const char *s) {
-    if (s) { strncpy(s_product, s, sizeof(s_product) - 1); s_product[sizeof(s_product) - 1] = 0; }
+void secd_usb_set_product(const uint8_t *data, uint16_t len) {
+    if (!data) return;
+    uint16_t n = len < sizeof(s_product) ? len : (uint16_t)(sizeof(s_product) - 1);
+    for (uint16_t i = 0; i < n; i++) s_product[i] = (char)data[i];
+    g_secd_str_len[2] = n;
 }
-void secd_usb_set_serial(const char *s) {
-    if (s) { strncpy(s_serial, s, sizeof(s_serial) - 1); s_serial[sizeof(s_serial) - 1] = 0; }
+void secd_usb_set_serial(const uint8_t *data, uint16_t len) {
+    if (!data) return;
+    uint16_t n = len < sizeof(s_serial) ? len : (uint16_t)(sizeof(s_serial) - 1);
+    for (uint16_t i = 0; i < n; i++) s_serial[i] = (char)data[i];
+    g_secd_str_len[3] = n;
 }
 
 void secd_usb_init(void)
 {
+    /* Default identity strings (ASCII, encoded as UTF-16LE). */
+    g_secd_str_len[1] = set_default_utf16(s_mfc, "SECD");
+    g_secd_str_len[2] = set_default_utf16(s_product, "SECD Machine");
+    g_secd_str_len[3] = set_default_utf16(s_serial, "000000000001");
     usbd_desc_register(0, &secd_descriptor);
     /* Console always present (port 0). */
     s_ports = 1;
