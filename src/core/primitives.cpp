@@ -248,6 +248,457 @@ secd_value_t prim_atom(secd_heap_t *heap, secd_value_t args) {
 /* Max segments a single wave-play call can drive (durations in 100ns ticks). */
 #define SECD_WAVE_MAX_SEGMENTS 512
 
+
+/*
+ * ---------------------------------------------------------------------
+ * Arbitrary-precision integers ("%bn-*" primitives).
+ *
+ * Representation: SECD_TYPE_BIGNUM heap object { car: sign (raw 0/1),
+ * cdr: bytevec descriptor slot } whose byte-vector holds the magnitude
+ * little-endian, base 256, normalized (no leading zero high bytes; zero
+ * has length 0 and sign 0). Arithmetic is classic schoolbook over the
+ * byte limbs with uint32 accumulators; division is Knuth algorithm D
+ * base-256. Results are freshly allocated; operands are never mutated.
+ */
+
+typedef struct {
+    const uint8_t *d;
+    uint16_t n;
+    int sign;          /* 0 = positive, 1 = negative */
+} bn_view;
+
+static bool bn_get(secd_heap_t *heap, secd_value_t v, bn_view *out) {
+    if (secd_get_type(v) != SECD_TYPE_BIGNUM) return false;
+    secd_object_t *obj = secd_heap_get(heap, secd_get_index(v));
+    if (!obj) return false;
+    out->sign = (int)(obj->car & 1u);
+    uint16_t slot = obj->cdr & SECD_INDEX_MASK;
+    secd_bytevec_t *bv = secd_bytevec_get(heap, slot);
+    if (!bv) return false;
+    out->d = bv->data;
+    out->n = bv->len;
+    return true;
+}
+
+/* Allocate a BIGNUM from raw magnitude bytes; strips leading zeros and
+ * canonicalizes the sign of zero. Returns SECD_NIL on allocation failure
+ * or when the operand was not a bignum (bad = true). */
+static bool bn_is_zero(const bn_view *v) {
+    for (uint16_t i = 0; i < v->n; i++) if (v->d[i]) return false;
+    return true;
+}
+
+static secd_value_t bn_make(secd_heap_t *heap, const uint8_t *d, uint16_t n, int sign, bool *bad) {
+    while (n > 0 && d[n - 1] == 0) n--;
+    static const uint8_t zero_byte = 0;
+    if (n == 0) { d = &zero_byte; n = 1; sign = 0; }   /* canonical zero */
+    uint16_t slot = secd_bytevec_alloc(heap, n);
+    if (slot == SECD_BYTEVEC_INVALID) { *bad = true; return SECD_NIL; }
+    for (uint16_t i = 0; i < n; i++) secd_bytevec_write(heap, slot, i, d[i]);
+    uint16_t index = secd_heap_alloc(heap, SECD_TYPE_BIGNUM);
+    if (index == 0) { *bad = true; return SECD_NIL; }
+    secd_object_t *obj = secd_heap_get(heap, index);
+    obj->car = (secd_value_t)(sign & 1u);
+    obj->cdr = (secd_value_t)slot;
+    return secd_make_handle(SECD_TYPE_BIGNUM, index);
+}
+
+static int bn_cmp_mag(const bn_view *a, const bn_view *b) {
+    uint16_t an = a->n, bn2 = b->n;
+    (void)an; (void)bn2;
+    if (bn_is_zero(a)) return bn_is_zero(b) ? 0 : -1;
+    if (bn_is_zero(b)) return 1;
+    if (a->n != b->n) return a->n < b->n ? -1 : 1;
+    for (uint16_t i = a->n; i-- > 0;) {
+        if (a->d[i] != b->d[i]) return a->d[i] < b->d[i] ? -1 : 1;
+    }
+    return 0;
+}
+
+static int bn_cmp(secd_heap_t *heap, secd_value_t av, secd_value_t bv, bool *bad) {
+    bn_view a, b;
+    if (!bn_get(heap, av, &a) || !bn_get(heap, bv, &b)) { *bad = true; return 0; }
+    if (a.sign != b.sign) return a.sign ? -1 : 1;
+    int m = bn_cmp_mag(&a, &b);
+    return a.sign ? -m : m;
+}
+
+/* out = a + b (magnitudes); returns carry-out length via *out_n */
+static void bn_add_mag(const uint8_t *a, uint16_t an, const uint8_t *b, uint16_t bn_,
+                       uint8_t *out, uint16_t *out_n) {
+    uint32_t carry = 0;
+    uint16_t i = 0;
+    for (; i < an || i < bn_; i++) {
+        uint32_t s = carry;
+        if (i < an) s += a[i];
+        if (i < bn_) s += b[i];
+        out[i] = (uint8_t)(s & 0xFFu);
+        carry = s >> 8;
+    }
+    if (carry) out[i++] = (uint8_t)carry;
+    *out_n = i;
+}
+
+/* out = a - b (magnitudes, requires a >= b) */
+static void bn_sub_mag(const uint8_t *a, uint16_t an, const uint8_t *b, uint16_t bn_,
+                       uint8_t *out, uint16_t *out_n) {
+    int32_t borrow = 0;
+    uint16_t i = 0;
+    for (; i < an; i++) {
+        int32_t s = (int32_t)a[i] - borrow - (i < bn_ ? b[i] : 0);
+        borrow = s < 0;
+        out[i] = (uint8_t)(s & 0xFFu);
+    }
+    *out_n = an;
+}
+
+static secd_value_t bn_addsub(secd_heap_t *heap, secd_value_t av, secd_value_t bv,
+                              bool subtract, bool *bad) {
+    bn_view a, b;
+    if (!bn_get(heap, av, &a) || !bn_get(heap, bv, &b)) { *bad = true; return SECD_NIL; }
+    if (subtract) b.sign ^= 1;
+
+    int sign;
+    uint16_t n = (a.n > b.n ? a.n : b.n) + 1;
+    uint8_t *tmp = (uint8_t *)malloc(n);
+    if (!tmp) { *bad = true; return SECD_NIL; }
+
+    if (a.sign == b.sign) {
+        bn_add_mag(a.d, a.n, b.d, b.n, tmp, &n);
+        sign = a.sign;
+    } else {
+        int m = bn_cmp_mag(&a, &b);
+        if (m == 0) {
+            /* canonical zero; tmp is released by the tail free below */
+            return bn_make(heap, tmp, 0, 0, bad);
+        }
+        if (m > 0) { bn_sub_mag(a.d, a.n, b.d, b.n, tmp, &n); sign = a.sign; }
+        else       { bn_sub_mag(b.d, b.n, a.d, a.n, tmp, &n); sign = b.sign; }
+    }
+    secd_value_t r = bn_make(heap, tmp, n, sign, bad);
+    free(tmp);
+    return r;
+}
+
+static secd_value_t bn_mul(secd_heap_t *heap, secd_value_t av, secd_value_t bv, bool *bad) {
+    bn_view a, b;
+    if (!bn_get(heap, av, &a) || !bn_get(heap, bv, &b)) { *bad = true; return SECD_NIL; }
+    if (bn_is_zero(&a) || bn_is_zero(&b)) return bn_make(heap, NULL, 0, 0, bad);
+
+    uint16_t n = (uint16_t)(a.n + b.n);
+    uint8_t *acc = (uint8_t *)calloc(n, 1);
+    if (!acc) { *bad = true; return SECD_NIL; }
+    for (uint16_t i = 0; i < a.n; i++) {
+        uint32_t carry = 0;
+        for (uint16_t j = 0; j < b.n; j++) {
+            uint32_t cur = acc[i + j] + (uint32_t)a.d[i] * b.d[j] + carry;
+            acc[i + j] = (uint8_t)(cur & 0xFFu);
+            carry = cur >> 8;
+        }
+        uint16_t k = i + b.n;
+        while (carry) { uint32_t cur = acc[k] + carry; acc[k] = cur & 0xFFu; carry >>= 8; k++; }
+    }
+    secd_value_t r = bn_make(heap, acc, n, a.sign ^ b.sign, bad);
+    free(acc);
+    return r;
+}
+
+/* Divide MAG (length N, little-endian) by DIVISOR (fits uint32);
+ * quotient -> Q (length N, normalized), returns remainder. O(N). */
+static uint32_t bn_divmod_u32(uint8_t *mag, uint16_t n, uint32_t divisor,
+                              uint8_t *q, uint16_t *qn) {
+    uint64_t rem = 0;
+    for (uint16_t i = n; i-- > 0;) {
+        uint64_t cur = (rem << 8) | mag[i];
+        q[i] = (uint8_t)(cur / divisor);
+        rem = cur % divisor;
+    }
+    *qn = n;
+    while (*qn > 0 && q[*qn - 1] == 0) (*qn)--;
+    return (uint32_t)rem;
+}
+
+/* General division, Knuth algorithm D on base-256 limbs.
+ * A (AN bytes) divided by B (BN bytes); both inputs are little-endian,
+ * B normalized (top byte nonzero). Q gets AN-BN+1 bytes, R gets BN.
+ * Requires scratch space internally; inputs not modified. */
+static void bn_knuth_d(const uint8_t *a_in, uint16_t an,
+                       const uint8_t *b_in, uint16_t bn,
+                       uint8_t *Q, uint16_t *qn,
+                       uint8_t *R, uint16_t *rn) {
+    /* Normalize so the divisor's top byte has its MSB set. */
+    unsigned s = 0;
+    unsigned tb = b_in[bn - 1], lz = 0;
+    while (!(tb & 0x80u)) { tb <<= 1; lz++; }
+    s = lz;
+
+    uint16_t un = an + 1;
+    uint8_t *u = (uint8_t *)calloc(un, 1);          /* dividend workspace */
+    uint8_t *v = (uint8_t *)malloc(bn);             /* normalized divisor */
+    memcpy(u, a_in, an);
+    memcpy(v, b_in, bn);
+
+    /* u <<= s ; v <<= s (v keeps length bn: top byte nonzero pre-shift) */
+    unsigned carry = 0;
+    for (uint16_t i = 0; i < an; i++) {
+        unsigned wv = ((unsigned)u[i] << s) | carry;
+        u[i] = (uint8_t)(wv & 0xFFu);
+        carry = wv >> 8;
+    }
+    u[an] = (uint8_t)carry;
+    if (s) {
+        unsigned vc = 0;
+        for (uint16_t i = 0; i < bn; i++) {
+            unsigned wv = ((unsigned)v[i] << s) | vc;
+            v[i] = (uint8_t)(wv & 0xFFu);
+            vc = wv >> 8;
+        }
+        /* vc must be 0 here since top byte << s still fits (s = its leading zeros) */
+    }
+
+    uint16_t m = an - bn;
+    for (uint16_t jj = m + 1; jj-- > 0;) {
+        uint32_t qhat = ((uint32_t)u[jj + bn] << 8) | u[jj + bn - 1];
+        uint32_t rhat = qhat % v[bn - 1];
+        qhat /= v[bn - 1];
+        if (qhat > 0xFFFFu) qhat = 0xFFFFu;         /* cannot happen (base 256), safety */
+        while (bn > 1 && (uint64_t)qhat * v[bn - 2] >
+                             (((uint64_t)qhat << 8) + rhat)) {
+            qhat--;
+            rhat += v[bn - 1];
+            if (rhat >= 256u) break;
+        }
+
+        /* u[jj..jj+bn] -= qhat * v */
+        uint32_t pc = 0;                            /* product carry */
+        int32_t sub_borrow = 0;
+        for (uint16_t i = 0; i < bn; i++) {
+            pc += (uint32_t)qhat * v[i];
+            int32_t t = (int32_t)u[i + jj] - sub_borrow - (int32_t)(pc & 0xFFu);
+            u[i + jj] = (uint8_t)(t & 0xFFu);
+            sub_borrow = (t < 0) ? 1 : 0;
+            pc >>= 8;
+        }
+        int32_t t = (int32_t)u[jj + bn] - sub_borrow - (int32_t)pc;
+        u[jj + bn] = (uint8_t)(t & 0xFFu);
+
+        if (t < 0) {
+            /* qhat one too large: add one multiple of v back */
+            uint32_t ac = 0;
+            for (uint16_t i = 0; i < bn; i++) {
+                uint32_t sum = (uint32_t)u[i + jj] + v[i] + ac;
+                u[i + jj] = (uint8_t)(sum & 0xFFu);
+                ac = sum >> 8;
+            }
+            u[jj + bn] = (uint8_t)((u[jj + bn] + ac) & 0xFFu);
+            Q[jj] = (uint8_t)qhat;
+        } else {
+            Q[jj] = (uint8_t)qhat;
+        }
+    }
+
+    /* Denormalize remainder R = (u mod base^bn) >> s */
+    if (s) {
+        unsigned rc = 0;
+        for (uint16_t i = bn; i-- > 0;) {
+            unsigned wv = ((unsigned)rc << 8) | u[i];
+            R[i] = (uint8_t)((wv >> s) & 0xFFu);
+            rc = wv & ((1u << s) - 1u);
+        }
+    } else {
+        memcpy(R, u, bn);
+    }
+    *rn = bn;
+    while (*rn > 0 && R[*rn - 1] == 0) (*rn)--;
+    *qn = an - bn + 1;
+    while (*qn > 0 && Q[*qn - 1] == 0) (*qn)--;
+    free(u);
+    free(v);
+}
+
+/* Multiply a little-endian magnitude by SMALL (uint32); OUT sized N+4. */
+static uint16_t bn_mul_u32(const uint8_t *d, uint16_t n, uint32_t m, uint8_t *out) {
+    uint64_t carry = 0;
+    uint16_t i = 0;
+    for (; i < n; i++) {
+        uint64_t cur = (uint64_t)d[i] * m + carry;
+        out[i] = (uint8_t)(cur & 0xFFu);
+        carry = cur >> 8;
+    }
+    while (carry) { out[i++] = (uint8_t)(carry & 0xFFu); carry >>= 8; }
+    return i;
+}
+
+/* Add a small value to a little-endian magnitude in place. */
+static void bn_add_u32_inplace(uint8_t *d, uint16_t *n, uint32_t v) {
+    uint64_t carry = v;
+    uint16_t i = 0;
+    while (carry) {
+        uint64_t cur = d[i] + (carry & 0xFFu);
+        d[i] = (uint8_t)(cur & 0xFFu);
+        carry = (carry >> 8) + (cur >> 8);
+        i++;
+    }
+    if (i > *n) *n = i;
+}
+
+secd_value_t prim_bn_add(secd_heap_t *heap, secd_value_t args) {
+    bool bad = false;
+    secd_value_t r = bn_addsub(heap, get_arg1(heap, args), get_arg2(heap, args), false, &bad);
+    return bad ? SECD_NIL : r;
+}
+
+secd_value_t prim_bn_sub(secd_heap_t *heap, secd_value_t args) {
+    bool bad = false;
+    secd_value_t r = bn_addsub(heap, get_arg1(heap, args), get_arg2(heap, args), true, &bad);
+    return bad ? SECD_NIL : r;
+}
+
+secd_value_t prim_bn_mul(secd_heap_t *heap, secd_value_t args) {
+    bool bad = false;
+    secd_value_t r = bn_mul(heap, get_arg1(heap, args), get_arg2(heap, args), &bad);
+    return bad ? SECD_NIL : r;
+}
+
+/* Wrap raw magnitude bytes into a fresh BIGNUM value. */
+static secd_value_t bn_wrap(secd_heap_t *heap, const uint8_t *d, uint16_t n, int sign) {
+    bool bad = false;
+    return bn_make(heap, d, n, sign, &bad);
+}
+
+secd_value_t prim_bn_div(secd_heap_t *heap, secd_value_t args) {
+    bn_view a, b;
+    if (!bn_get(heap, get_arg1(heap, args), &a) ||
+        !bn_get(heap, get_arg2(heap, args), &b) || bn_is_zero(&b)) {
+        return SECD_NIL;
+    }
+    if (bn_cmp_mag(&a, &b) < 0) return bn_wrap(heap, NULL, 0, 0);
+    uint16_t qn = (uint16_t)(a.n - b.n + 1), rn = b.n;
+    uint8_t *q = (uint8_t *)calloc(qn ? qn : 1, 1);
+    uint8_t *r = (uint8_t *)malloc(rn ? rn : 1);
+    if (!q || !r) { free(q); free(r); return SECD_NIL; }
+    bn_knuth_d(a.d, a.n, b.d, b.n, q, &qn, r, &rn);
+    secd_value_t res = bn_wrap(heap, q, qn, a.sign ^ b.sign);
+    free(q); free(r);
+    return res;
+}
+
+secd_value_t prim_bn_mod(secd_heap_t *heap, secd_value_t args) {
+    bn_view a, b;
+    if (!bn_get(heap, get_arg1(heap, args), &a) ||
+        !bn_get(heap, get_arg2(heap, args), &b) || bn_is_zero(&b)) {
+        return SECD_NIL;
+    }
+    if (bn_cmp_mag(&a, &b) < 0) return bn_wrap(heap, a.d, a.n, a.sign);
+    uint16_t qn = (uint16_t)(a.n - b.n + 1), rn = b.n;
+    uint8_t *q = (uint8_t *)calloc(qn ? qn : 1, 1);
+    uint8_t *r = (uint8_t *)malloc(rn ? rn : 1);
+    if (!q || !r) { free(q); free(r); return SECD_NIL; }
+    bn_knuth_d(a.d, a.n, b.d, b.n, q, &qn, r, &rn);
+    secd_value_t res = bn_wrap(heap, r, rn, a.sign);
+    free(q); free(r);
+    return res;
+}
+
+secd_value_t prim_bn_cmp(secd_heap_t *heap, secd_value_t args) {
+    bool bad = false;
+    int c = bn_cmp(heap, get_arg1(heap, args), get_arg2(heap, args), &bad);
+    return bad ? SECD_NIL : secd_make_fixnum((int16_t)c);
+}
+
+/* %bn-to-string: decimal ASCII (leading '-' when negative), returned as a
+ * string byte-vector. Converts by repeatedly dividing the working copy by
+ * 10^9 (u32 path), peeling 9 digits per pass: O(len^2 / 9). */
+secd_value_t prim_bn_to_string(secd_heap_t *heap, secd_value_t args) {
+    bn_view a;
+    if (!bn_get(heap, get_arg1(heap, args), &a)) return SECD_NIL;
+
+    uint16_t cap = (uint16_t)(a.n > 0 ? (uint32_t)a.n * 3u + 12u : 2u);
+    char *digits = (char *)malloc(cap);              /* emitted LSB-group first */
+    if (!digits) return SECD_NIL;
+    uint16_t ndigits = 0;
+
+    if (a.n == 0) {
+        digits[ndigits++] = '0';
+    } else {
+        uint8_t *work = (uint8_t *)malloc(a.n);
+        if (!work) { free(digits); return SECD_NIL; }
+        memcpy(work, a.d, a.n);
+        uint16_t wn = a.n;
+        bool first_group = true;
+        while (wn > 0) {
+            uint8_t *q = (uint8_t *)malloc(wn);
+            if (!q) { free(work); free(digits); return SECD_NIL; }
+            uint16_t qn;
+            uint32_t rem = bn_divmod_u32(work, wn, 1000000000u, q, &qn);
+            /* q holds the quotient (normalized length qn <= wn) */
+            for (int i = 8; i >= 0; i--) { digits[ndigits++] = (char)('0' + (rem % 10)); rem /= 10; }
+            first_group = false;
+            (void)first_group;
+            memcpy(work, q, qn);
+            wn = qn;
+            free(q);
+        }
+        free(work);
+        /* digits[] now holds groups least-significant-first, each padded to
+         * 9; strip padding zeros from the very END (most significant group)
+         * leaving at least one digit. */
+        while (ndigits > 1 && digits[ndigits - 1] == '0') ndigits--;
+        /* reverse into place */
+        for (uint16_t i = 0; i < ndigits / 2; i++) {
+            char t = digits[i]; digits[i] = digits[ndigits - 1 - i]; digits[ndigits - 1 - i] = t;
+        }
+    }
+
+    uint16_t slot = secd_bytevec_alloc(heap, (uint16_t)(ndigits + (a.sign ? 1u : 0u)));
+    if (slot == SECD_BYTEVEC_INVALID) { free(digits); return SECD_NIL; }
+    uint16_t pos = 0;
+    if (a.sign) secd_bytevec_write(heap, slot, pos++, '-');
+    for (uint16_t i = 0; i < ndigits; i++) secd_bytevec_write(heap, slot, pos++, (uint8_t)digits[i]);
+    free(digits);
+    return secd_make_bytevec(slot);
+}
+
+/* %bn-from-string: parse an optional sign followed by decimal digits from a
+ * string byte-vector. Returns SECD_NIL on empty/garbage input or OOM. */
+secd_value_t prim_bn_from_string(secd_heap_t *heap, secd_value_t args) {
+    secd_value_t sv = get_arg1(heap, args);
+    if (!secd_is_bytevec(sv)) return SECD_NIL;
+    secd_bytevec_t *bv = secd_bytevec_get(heap, secd_get_index(sv));
+    if (!bv || bv->len == 0) return SECD_NIL;
+
+    uint16_t i = 0;
+    int sign = 0;
+    if (bv->data[0] == '-') { sign = 1; i++; }
+    else if (bv->data[0] == '+') { i++; }
+    if (i >= bv->len) return SECD_NIL;
+
+    uint16_t cap = (uint16_t)((bv->len + 1) / 2 + 4);
+    uint8_t *acc = (uint8_t *)calloc(cap, 1);
+    uint8_t *tmp = (uint8_t *)malloc((size_t)cap + 8);
+    if (!acc || !tmp) { free(acc); free(tmp); return SECD_NIL; }
+    uint16_t an = 0;                                  /* magnitude length */
+
+    for (; i < bv->len; i++) {
+        uint8_t ch = bv->data[i];
+        if (ch < '0' || ch > '9') { free(acc); free(tmp); return SECD_NIL; }
+        /* acc = acc * 10 + digit */
+        uint16_t tn = bn_mul_u32(acc, an, 10, tmp);
+        uint16_t need = (uint16_t)(tn + 1);
+        if (need > cap) { free(acc); free(tmp); return SECD_NIL; }
+        memcpy(acc, tmp, tn);
+        an = tn;
+        bn_add_u32_inplace(acc, &an, (uint32_t)(ch - '0'));
+        while (an > 0 && acc[an - 1] == 0) an--;
+    }
+    free(tmp);
+
+    bool bad = false;
+    secd_value_t r = bn_make(heap, acc, an, sign, &bad);
+    free(acc);
+    return bad ? SECD_NIL : r;
+}
+
 /* Decode an integer argument that may be a 12-bit fixnum or a boxed wide
  * integer (BIGNUM, from the LDCW literal path) into uint32_t. */
 static uint32_t get_arg_u32(secd_heap_t *heap, secd_value_t args, int n) {
@@ -740,6 +1191,19 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
 
     /* Software (non-HAL) runtime helpers, present in every firmware build. */
 #endif
+
+    /* Arbitrary-precision integers (%bn-*): present in EVERY firmware.
+       Registered unconditionally at the tail of the HAL table so ids follow
+       whatever feature prims a given chip enables; see the per-chip target metadata
+       for the per-chip numbering. */
+    secd_register_prim(registry, "%bn-add", prim_bn_add);
+    secd_register_prim(registry, "%bn-sub", prim_bn_sub);
+    secd_register_prim(registry, "%bn-mul", prim_bn_mul);
+    secd_register_prim(registry, "%bn-div", prim_bn_div);
+    secd_register_prim(registry, "%bn-mod", prim_bn_mod);
+    secd_register_prim(registry, "%bn-cmp", prim_bn_cmp);
+    secd_register_prim(registry, "%bn-to-string", prim_bn_to_string);
+    secd_register_prim(registry, "%bn-from-string", prim_bn_from_string);
 
     /* Universal software primitives — registered UNCONDITIONALLY so they
        exist in EVERY firmware image (S3, C3, rp2040, ...). Part of the

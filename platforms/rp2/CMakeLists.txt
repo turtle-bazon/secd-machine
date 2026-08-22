@@ -48,6 +48,10 @@ set(SECD_FEATURES "gpio,uart,i2c" CACHE STRING
     "Board features to enable (comma-separated): gpio,uart,...")
 message(STATUS "SECD features: ${SECD_FEATURES}")
 
+# Byte-vector/bignum arena (factorial-class workloads need headroom).
+set(SECD_BYTEVEC_ARENA_SIZE 196608 CACHE STRING "")
+add_compile_definitions(SECD_BYTEVEC_ARENA_SIZE=${SECD_BYTEVEC_ARENA_SIZE})
+
 # CMake lists use ';' separators; the cache value is comma-separated
 string(REPLACE "," ";" _SECD_FEATURES "${SECD_FEATURES}")
 

@@ -151,6 +151,38 @@
         "%usb-serial": {
             "id": 45,
             "args": 1
+        },
+        "%bn-add": {
+            "id": 46,
+            "args": 2
+        },
+        "%bn-sub": {
+            "id": 47,
+            "args": 2
+        },
+        "%bn-mul": {
+            "id": 48,
+            "args": 2
+        },
+        "%bn-div": {
+            "id": 49,
+            "args": 2
+        },
+        "%bn-mod": {
+            "id": 50,
+            "args": 2
+        },
+        "%bn-cmp": {
+            "id": 51,
+            "args": 2
+        },
+        "%bn-to-string": {
+            "id": 52,
+            "args": 1
+        },
+        "%bn-from-string": {
+            "id": 53,
+            "args": 1
         }
     },
     "usb": {

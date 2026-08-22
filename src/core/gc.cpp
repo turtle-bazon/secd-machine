@@ -41,7 +41,7 @@ static void mark_object(secd_heap_t *heap, secd_value_t val) {
     if (secd_is_bytevec(val)) {
         uint16_t slot = secd_get_index(val);
         if (slot < SECD_BYTEVEC_MAX) {
-            heap->bytevec_marks |= (uint64_t)1 << slot;
+            heap->bytevec_marks[slot] = 1;
         }
         return;
     }
@@ -84,10 +84,15 @@ static void mark_object(secd_heap_t *heap, secd_value_t val) {
         }
         
         case SECD_TYPE_BIGNUM: {
-            /* Bignum contains pointer to data (stored in car as handle) */
+            /* Bignum = { car: sign (raw 0/1), cdr: bytevec descriptor slot
+             * holding the little-endian magnitude }. Mark that slot so its
+             * arena data survives collection. */
             secd_object_t *obj = secd_heap_get(heap, index);
             if (obj) {
-                mark_object(heap, obj->car);
+                uint16_t slot = obj->cdr & SECD_INDEX_MASK;
+                if (slot < SECD_BYTEVEC_MAX) {
+                    heap->bytevec_marks[slot] = 1;
+                }
             }
             break;
         }

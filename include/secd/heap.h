@@ -53,10 +53,10 @@ extern "C" {
  * at a region of a RAM arena (vectors created with make-vector).
  */
 #ifndef SECD_BYTEVEC_MAX
-#define SECD_BYTEVEC_MAX 64              /* max simultaneously live byte-vectors */
+#define SECD_BYTEVEC_MAX 256             /* max simultaneously live byte-vectors */
 #endif
 #ifndef SECD_BYTEVEC_ARENA_SIZE
-#define SECD_BYTEVEC_ARENA_SIZE 8192     /* RAM bytes for make-vector */
+#define SECD_BYTEVEC_ARENA_SIZE 65536    /* RAM bytes for make-vector/bignums */
 #endif
 #define SECD_BYTEVEC_INVALID 0xFFFF      /* sentinel slot value */
 
@@ -93,7 +93,7 @@ typedef struct {
     /* GC mark bits for bytevec slots: bit N set = slot N reachable from the
      * machine roots on the last collection. ROM slots (bytecode pool) are
      * never freed, so only RAM (make-vector / read) slots use these. */
-    uint64_t bytevec_marks;
+    uint8_t bytevec_marks[SECD_BYTEVEC_MAX]; /* per-descriptor reachability */
 } secd_heap_t;
 
 /* Initialize heap */
@@ -151,22 +151,20 @@ secd_value_t secd_cons(secd_heap_t *heap, secd_value_t car, secd_value_t cdr);
 /*
  * Boxed wide integers ("bignums").
  *
- * A BIGNUM is a single heap object holding an unsigned 24-bit magnitude:
- * car = bits 23..12, cdr = bits 11..0 (raw 12-bit payloads, untagged).
- * It exists so constants beyond the 12-bit immediate fixnum range can be
- * expressed in programs and handed to HAL-facing primitives; arithmetic
- * primitives still operate on fixnums only.
+ * A BIGNUM is a single heap object referencing a byte-vector that holds the
+ * little-endian base-256 magnitude (no leading zero bytes; zero is the empty
+ * vector). car = sign (raw 0/1), cdr = bytevec descriptor slot. This gives
+ * arbitrary-precision integers bounded only by the byte arena; the %bn-*
+ * primitives implement arithmetic on them.
+ *
+ * secd_make_bignum builds one from an unsigned 32-bit value (used by the
+ * LDCW constant path and by primitives), and secd_integer_value64 decodes
+ * any FIXNUM/BIGNUM into int64_t (saturating at 64 bits).
  */
+#define SECD_BIGNUM_MAX 0xFFFFFFFFu
 
-/* Largest value secd_make_bignum accepts. */
-#define SECD_BIGNUM_MAX 0xFFFFFFu
-
-/* Box VAL as a BIGNUM. Returns SECD_NIL when the heap is full or VAL
- * exceeds SECD_BIGNUM_MAX. */
 secd_value_t secd_make_bignum(secd_heap_t *heap, uint32_t val);
-
-/* Decode any integer value: FIXNUM -> sign-extended 12-bit; BIGNUM ->
- * reassembled 24-bit; anything else -> 0. */
+int64_t secd_integer_value64(secd_heap_t *heap, secd_value_t val);
 uint32_t secd_integer_value(secd_heap_t *heap, secd_value_t val);
 
 /*

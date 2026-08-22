@@ -75,7 +75,7 @@ int secd_heap_init(secd_heap_t *heap, uint16_t size) {
     heap->byte_arena = NULL;
     heap->byte_arena_size = 0;
     heap->byte_arena_pos = 0;
-    heap->bytevec_marks = 0;
+    memset(heap->bytevec_marks, 0, sizeof(heap->bytevec_marks));
     
     return 0;
 }
@@ -224,7 +224,7 @@ static void secd_heap_gc_bytevecs(secd_heap_t *heap) {
         secd_bytevec_t *v = &heap->bytevecs[i];
         if (!v->writable) continue;             /* ROM: keep as-is */
 
-        if (heap->bytevec_marks & ((uint64_t)1 << i)) {
+        if (heap->bytevec_marks[i]) {
             /* Reachable: move its data down to the pack position. */
             if (v->data && heap->byte_arena
                 && (v->data - heap->byte_arena) != (int32_t)pack) {
@@ -240,7 +240,7 @@ static void secd_heap_gc_bytevecs(secd_heap_t *heap) {
         }
     }
     heap->byte_arena_pos = pack;
-    heap->bytevec_marks = 0;
+    memset(heap->bytevec_marks, 0, sizeof(heap->bytevec_marks));
 }
 
 uint16_t secd_heap_gc(secd_heap_t *heap) {
@@ -269,6 +269,7 @@ uint16_t secd_heap_gc(secd_heap_t *heap) {
     
     /* Clear marks for next collection */
     clear_marks(heap);
+    memset(heap->bytevec_marks, 0, sizeof(heap->bytevec_marks));
     
     /* Update statistics */
     heap->stats.used -= freed;
@@ -345,38 +346,54 @@ secd_object_t *obj = secd_heap_get(heap, index);
  * Boxed wide integers.
  */
 
+/*
+ * Boxed wide integers (v2): magnitude lives in a byte-vector (little-endian,
+ * base 256, no leading zero bytes; zero is the empty vector), the heap
+ * BIGNUM object carries { car: sign (raw 0/1), cdr: descriptor slot }.
+ */
 secd_value_t secd_make_bignum(secd_heap_t *heap, uint32_t val) {
     if (!heap || val > SECD_BIGNUM_MAX) {
         return SECD_NIL;
     }
+    /* Canonical zero is a single 0x00 magnitude byte (the descriptor
+     * table cannot store zero-length vectors). */
+    uint8_t mag[4] = {0, 0, 0, 0};
+    uint16_t n = 0;
+    while (val && n < 4) { mag[n++] = (uint8_t)(val & 0xFFu); val >>= 8; }
+    if (n == 0) mag[n++] = 0;
+    uint16_t slot = secd_bytevec_alloc(heap, n);
+    if (slot == SECD_BYTEVEC_INVALID) return SECD_NIL;
+    for (uint16_t i = 0; i < n; i++) secd_bytevec_write(heap, slot, i, mag[i]);
     uint16_t index = secd_heap_alloc(heap, SECD_TYPE_BIGNUM);
-    if (index == 0) {
-        return SECD_NIL; /* Heap full */
-    }
+    if (index == 0) return SECD_NIL;
     secd_object_t *obj = secd_heap_get(heap, index);
-    if (!obj) {
-        return SECD_NIL;
-    }
-    /* Raw 12-bit payloads (untagged): the GC treats BIGNUM car/cdr as
-     * non-references, and tag 0x0 decodes as NIL which mark_object ignores. */
-    obj->car = (secd_value_t)((val >> 12) & 0x0FFFu);
-    obj->cdr = (secd_value_t)(val & 0x0FFFu);
+    obj->car = 0;                                   /* sign = positive */
+    obj->cdr = (secd_value_t)slot;
     return secd_make_handle(SECD_TYPE_BIGNUM, index);
 }
 
-uint32_t secd_integer_value(secd_heap_t *heap, secd_value_t val) {
+int64_t secd_integer_value64(secd_heap_t *heap, secd_value_t val) {
     switch (secd_get_type(val)) {
         case SECD_TYPE_FIXNUM:
-            return (uint32_t)(int32_t)secd_fixnum_value(val);
+            return (int64_t)secd_fixnum_value(val);
         case SECD_TYPE_BIGNUM: {
             const secd_object_t *obj = secd_heap_get(heap, secd_get_index(val));
             if (!obj) return 0;
-            return ((uint32_t)(obj->car & 0x0FFFu) << 12) |
-                   (uint32_t)(obj->cdr & 0x0FFFu);
+            int sign = (int)(obj->car & 1u);
+            uint16_t slot = obj->cdr & SECD_INDEX_MASK;
+            const secd_bytevec_t *bv = secd_bytevec_get(heap, slot);
+            if (!bv) return 0;
+            uint64_t m = 0;
+            for (uint16_t i = bv->len; i-- > 0;) m = (m << 8) | bv->data[i];
+            return sign ? -(int64_t)m : (int64_t)m;
         }
         default:
             return 0;
     }
+}
+
+uint32_t secd_integer_value(secd_heap_t *heap, secd_value_t val) {
+    return (uint32_t)secd_integer_value64(heap, val);
 }
 
 /*

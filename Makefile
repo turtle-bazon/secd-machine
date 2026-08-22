@@ -60,7 +60,7 @@ SAMD21_DIR = build/samd21
 SAMD21_DIR_RELEASE = build/samd21-release
 SAMD21_CC = arm-none-eabi-g++
 SAMD21_CFLAGS = -mcpu=cortex-m0plus -mthumb -Os -ffunction-sections -fdata-sections \
-	-Wall -Wextra -Iinclude \
+	-Wall -Wextra -Iinclude -DSECD_BYTEVEC_ARENA_SIZE=8192 \
 	-DSECD_FEATURE_GPIO=1 -DSECD_FEATURE_UART=0 \
 	-DSECD_MACHINE_VERSION='"0.0.1.0"' -DSECD_FEATURES_STR='"gpio"' -DSECD_DEBUG_BUILD=1
 SAMD21_CFLAGS_RELEASE = -mcpu=cortex-m0plus -mthumb -Os -ffunction-sections -fdata-sections \
@@ -86,7 +86,7 @@ STM32_CORE_SRCS = platforms/stm32/main.cpp platforms/stm32/startup_stm32.cpp \
 STM32F103_DIR = build/stm32f103
 STM32F103_DIR_RELEASE = build/stm32f103-release
 STM32F103_CFLAGS = -mcpu=cortex-m3 -mthumb -Os -ffunction-sections -fdata-sections \
-	-Wall -Wextra -Iinclude \
+	-Wall -Wextra -Iinclude -DSECD_BYTEVEC_ARENA_SIZE=8192 \
 	-DSECD_FEATURE_GPIO=1 -DSECD_FEATURE_UART=1 -DSECD_FEATURE_I2C=1 \
 	-DSECD_MACHINE_VERSION='"0.0.1.0"' -DSECD_PLATFORM_NAME='"Blue Pill F103CB"' \
 	-DSECD_HEAP_OBJECTS=1024 -DSECD_FEATURES_STR='"gpio,uart,i2c"' -DSECD_DEBUG_BUILD=1
@@ -96,7 +96,7 @@ STM32F103_SRCS = $(STM32_CORE_SRCS) src/hal/stm32f1.cpp
 STM32F401_DIR = build/stm32f401
 STM32F401_DIR_RELEASE = build/stm32f401-release
 STM32F401_CFLAGS = -mcpu=cortex-m4 -mthumb -Os -ffunction-sections -fdata-sections \
-	-Wall -Wextra -Iinclude \
+	-Wall -Wextra -Iinclude -DSECD_BYTEVEC_ARENA_SIZE=49152 \
 	-DSECD_FEATURE_GPIO=1 -DSECD_FEATURE_UART=1 -DSECD_FEATURE_I2C=1 \
 	-DSECD_MACHINE_VERSION='"0.0.1.0"' -DSECD_PLATFORM_NAME='"Black Pill F401RC"' \
 	-DSECD_HEAP_OBJECTS=4096 -DSECD_FEATURES_STR='"gpio,uart,i2c"' -DSECD_DEBUG_BUILD=1
@@ -191,7 +191,7 @@ TEST_DIR = tests
 TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
 TEST_OBJS = $(TEST_SRCS:.c=.o)
 
-.PHONY: all clean tests machines machine $(TARGETS) rp2040-debug rp2040-release
+.PHONY: all clean tests host-bn-test machines machine $(TARGETS) rp2040-debug rp2040-release
 
 all: $(LIB)
 
@@ -200,6 +200,14 @@ $(LIB): $(OBJS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
+
+# Host-side bignum engine test (no HAL needed; stubbed). Runs with host g++.
+host-bn-test:
+	@g++ -O1 -DSECD_BYTEVEC_MAX=4096 -Iinclude -o build/bn_test \
+		tests/host/bignum_test.cpp tests/host/hal_stub.cpp \
+		src/core/heap.cpp src/core/gc.cpp src/core/bytecode.cpp \
+		src/core/symbols.cpp src/core/machine.cpp src/core/primitives.cpp -lm
+	@./build/bn_test
 
 tests: $(LIB) $(TEST_OBJS)
 	$(CC) $(TEST_OBJS) $(LIB) $(LDFLAGS) -o run_tests
