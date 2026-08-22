@@ -23,7 +23,7 @@ LIB = libsecd.a
 OUTPUT_DIR = output
 # Scratch dir for generated target metadata (zipped into .machine, not delivered)
 META_DIR = $(OUTPUT_DIR)/.build
-TARGETS = rp2040-pico rp2040-zero rp2350-zero rp2350-beetle seeed-xiao-samd21 esp32c3-supermini stamp-s3a
+TARGETS = rp2040-pico rp2040-zero rp2350-zero rp2350-beetle seeed-xiao-samd21 esp32c3-supermini stamp-s3a blue-pill black-pill-f401
 
 # Pico SDK
 PICO_SDK_PATH ?= /tmp/pico-sdk
@@ -72,6 +72,83 @@ SAMD21_SRCS = platforms/samd21/main.cpp platforms/samd21/startup_samd21.cpp \
 	src/hal/samd21.cpp \
 	src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp src/core/bytecode.cpp \
 	src/core/primitives.cpp src/core/symbols.cpp
+
+# STM32 bare-metal boards: Blue Pill F103CBT6 (Cortex-M3 @72MHz) and Black
+# Pill F401RCT6 (Cortex-M4 @84MHz, WeAct "stm32f401/411 v1204"). Shared
+# platform glue; only -mcpu, HAL file and linker script differ. Console is
+# USART1 PA9/PA10; I2C master on two buses (I2C1 PB6/PB7, I2C2 PB10/PB11).
+STM32_CC = arm-none-eabi-g++
+STM32_CORE_SRCS = platforms/stm32/main.cpp platforms/stm32/startup_stm32.cpp \
+	platforms/stm32/syscalls.cpp \
+	src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp src/core/bytecode.cpp \
+	src/core/primitives.cpp src/core/symbols.cpp
+
+STM32F103_DIR = build/stm32f103
+STM32F103_DIR_RELEASE = build/stm32f103-release
+STM32F103_CFLAGS = -mcpu=cortex-m3 -mthumb -Os -ffunction-sections -fdata-sections \
+	-Wall -Wextra -Iinclude \
+	-DSECD_FEATURE_GPIO=1 -DSECD_FEATURE_UART=1 -DSECD_FEATURE_I2C=1 \
+	-DSECD_MACHINE_VERSION='"0.0.1.0"' -DSECD_PLATFORM_NAME='"Blue Pill F103CB"' \
+	-DSECD_HEAP_OBJECTS=1024 -DSECD_FEATURES_STR='"gpio,uart,i2c"' -DSECD_DEBUG_BUILD=1
+STM32F103_CFLAGS_RELEASE = $(filter-out -DSECD_DEBUG_BUILD=1,$(STM32F103_CFLAGS)) -DSECD_DEBUG_BUILD=0
+STM32F103_SRCS = $(STM32_CORE_SRCS) src/hal/stm32f1.cpp
+
+STM32F401_DIR = build/stm32f401
+STM32F401_DIR_RELEASE = build/stm32f401-release
+STM32F401_CFLAGS = -mcpu=cortex-m4 -mthumb -Os -ffunction-sections -fdata-sections \
+	-Wall -Wextra -Iinclude \
+	-DSECD_FEATURE_GPIO=1 -DSECD_FEATURE_UART=1 -DSECD_FEATURE_I2C=1 \
+	-DSECD_MACHINE_VERSION='"0.0.1.0"' -DSECD_PLATFORM_NAME='"Black Pill F401RC"' \
+	-DSECD_HEAP_OBJECTS=4096 -DSECD_FEATURES_STR='"gpio,uart,i2c"' -DSECD_DEBUG_BUILD=1
+STM32F401_CFLAGS_RELEASE = $(filter-out -DSECD_DEBUG_BUILD=1,$(STM32F401_CFLAGS)) -DSECD_DEBUG_BUILD=0
+STM32F401_SRCS = $(STM32_CORE_SRCS) src/hal/stm32f4.cpp
+
+define STM32-LINK
+	@mkdir -p $(1)
+	@echo "void __cxa_pure_virtual(void) {}" > $(1)/dummy.cpp
+	@arm-none-eabi-g++ -c $(1)/dummy.cpp -o $(1)/dummy.o
+	@arm-none-eabi-ar rcs $(1)/libstdc++.a $(1)/dummy.o
+	@$(2) $(3) $(5) -Wl,-T,$(4) -Wl,--gc-sections -nostartfiles \
+		-L$(1) -lm -o $(1)/secd-machine.elf
+endef
+
+$(STM32F103_DIR)/secd-machine.elf: $(STM32F103_SRCS)
+	$(call STM32-LINK,$(STM32F103_DIR),$(STM32_CC),$(STM32F103_CFLAGS),platforms/stm32/stm32f103cb.ld,$(STM32F103_SRCS))
+
+$(STM32F103_DIR_RELEASE)/secd-machine.elf: $(STM32F103_SRCS)
+	$(call STM32-LINK,$(STM32F103_DIR_RELEASE),$(STM32_CC),$(STM32F103_CFLAGS_RELEASE),platforms/stm32/stm32f103cb.ld,$(STM32F103_SRCS))
+
+$(STM32F401_DIR)/secd-machine.elf: $(STM32F401_SRCS)
+	$(call STM32-LINK,$(STM32F401_DIR),$(STM32_CC),$(STM32F401_CFLAGS),platforms/stm32/stm32f401rc.ld,$(STM32F401_SRCS))
+
+$(STM32F401_DIR_RELEASE)/secd-machine.elf: $(STM32F401_SRCS)
+	$(call STM32-LINK,$(STM32F401_DIR_RELEASE),$(STM32_CC),$(STM32F401_CFLAGS_RELEASE),platforms/stm32/stm32f401rc.ld,$(STM32F401_SRCS))
+
+build/%/firmware.bin: build/%/secd-machine.elf
+	@arm-none-eabi-objcopy -O binary $< $@
+
+define STM32-PACK
+	@mkdir -p $(OUTPUT_DIR)
+	@python3 -c "import zipfile; \
+		zf = zipfile.ZipFile('$(3)', 'w', zipfile.ZIP_DEFLATED); \
+		zf.write('$(1)/firmware.bin', 'firmware.bin'); \
+		zf.write('$(META_DIR)/$(2).metadata.json', 'metadata.json'); \
+		zf.close()"
+	@echo "Created $(3)"
+endef
+
+$(OUTPUT_DIR)/blue-pill.machine: $(STM32F103_DIR)/firmware.bin $(META_DIR)/blue-pill.metadata.json
+	$(call STM32-PACK,$(STM32F103_DIR),blue-pill,$@)
+
+$(OUTPUT_DIR)/blue-pill.release.machine: $(STM32F103_DIR_RELEASE)/firmware.bin $(META_DIR)/blue-pill.metadata.json
+	$(call STM32-PACK,$(STM32F103_DIR_RELEASE),blue-pill,$@)
+
+$(OUTPUT_DIR)/black-pill-f401.machine: $(STM32F401_DIR)/firmware.bin $(META_DIR)/black-pill-f401.metadata.json
+	$(call STM32-PACK,$(STM32F401_DIR),black-pill-f401,$@)
+
+$(OUTPUT_DIR)/black-pill-f401.release.machine: $(STM32F401_DIR_RELEASE)/firmware.bin $(META_DIR)/black-pill-f401.metadata.json
+	$(call STM32-PACK,$(STM32F401_DIR_RELEASE),black-pill-f401,$@)
+
 
 # ESP32-C3 SuperMini (ESP-IDF, single-core RISC-V). Bytecode is appended to the
 # app image at runtime (never compiled in); see link-machine-esp32.
