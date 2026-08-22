@@ -248,6 +248,16 @@ secd_value_t prim_atom(secd_heap_t *heap, secd_value_t args) {
 /* Max segments a single wave-play call can drive (durations in 100ns ticks). */
 #define SECD_WAVE_MAX_SEGMENTS 512
 
+/* Decode an integer argument that may be a 12-bit fixnum or a boxed wide
+ * integer (BIGNUM, from the LDCW literal path) into uint32_t. */
+static uint32_t get_arg_u32(secd_heap_t *heap, secd_value_t args, int n) {
+    secd_value_t v = (n == 1) ? get_arg1(heap, args)
+                   : (n == 2) ? get_arg2(heap, args)
+                   : (n == 3) ? get_arg3(heap, args)
+                              : get_arg4(heap, args);
+    return secd_integer_value(heap, v);
+}
+
 #if SECD_FEATURE_GPIO
 secd_value_t prim_gpio_init(secd_heap_t *heap, secd_value_t args) {
     uint8_t pin = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
@@ -269,7 +279,7 @@ secd_value_t prim_gpio_read(secd_heap_t *heap, secd_value_t args) {
 
 #if SECD_FEATURE_UART
 secd_value_t prim_uart_init(secd_heap_t *heap, secd_value_t args) {
-    uint32_t baud = (uint32_t)secd_fixnum_value(get_arg1(heap, args));
+    uint32_t baud = get_arg_u32(heap, args, 1);
     hal_serial_init(baud);
     return SECD_NIL;
 }
@@ -292,8 +302,9 @@ secd_value_t prim_i2c_init(secd_heap_t *heap, secd_value_t args) {
     (void)heap;
     uint8_t sda = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
     uint8_t scl = (uint8_t)secd_fixnum_value(get_arg2(heap, args));
-    /* Frequency is in kHz (fits the 12-bit fixnum; 100000 Hz would wrap). */
-    uint32_t hz = (uint32_t)secd_fixnum_value(get_arg3(heap, args)) * 1000u;
+    /* Frequency is in kHz (fits the 12-bit fixnum; 100000 Hz would wrap).
+     * The argument may also be a boxed wide integer. */
+    uint32_t hz = get_arg_u32(heap, args, 3) * 1000u;
     return secd_make_fixnum((int16_t)hal_i2c_init(sda, scl, hz));
 }
 
@@ -479,7 +490,7 @@ secd_value_t prim_serial_avail(secd_heap_t *heap, secd_value_t args) {
 #endif
 
 secd_value_t prim_sleep(secd_heap_t *heap, secd_value_t args) {
-    uint32_t ms = (uint32_t)secd_fixnum_value(get_arg1(heap, args));
+    uint32_t ms = get_arg_u32(heap, args, 1);
     hal_sleep(ms);
     return SECD_NIL;
 }

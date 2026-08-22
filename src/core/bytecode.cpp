@@ -76,6 +76,10 @@ int secd_inst_length(uint8_t opcode) {
         case OP_BRK:
         case OP_ERROR:
             return 2;
+
+        /* 4-byte instructions */
+        case OP_LDCW:
+            return 4;
         
         /* 3-byte instructions */
         case OP_LDV:
@@ -194,6 +198,26 @@ int secd_execute(secd_machine_t *machine, const uint8_t *bytecode, size_t length
                     return -1;
                 }
                 ip += 3;
+                break;
+            }
+
+            case OP_LDCW: {
+                /* Load wide constant: box a 24-bit unsigned integer as a
+                 * BIGNUM heap object (car = high 12 bits, cdr = low 12).
+                 * Allocated per execution; GC reclaims it like any other
+                 * temporary once it is no longer referenced. */
+                uint32_t value = ((uint32_t)bytecode[ip + 1] << 16) |
+                                 ((uint32_t)bytecode[ip + 2] << 8) |
+                                 (uint32_t)bytecode[ip + 3];
+                secd_value_t boxed = secd_make_bignum(machine->heap, value);
+                if (boxed == SECD_NIL) {
+                    secd_set_error(machine, SECD_ERROR_HEAP_FULL);
+                    return -1;
+                }
+                if (secd_push(machine, boxed) != 0) {
+                    return -1;
+                }
+                ip += 4;
                 break;
             }
             

@@ -149,6 +149,27 @@ void secd_set_cdr(secd_heap_t *heap, secd_value_t pair, secd_value_t val);
 secd_value_t secd_cons(secd_heap_t *heap, secd_value_t car, secd_value_t cdr);
 
 /*
+ * Boxed wide integers ("bignums").
+ *
+ * A BIGNUM is a single heap object holding an unsigned 24-bit magnitude:
+ * car = bits 23..12, cdr = bits 11..0 (raw 12-bit payloads, untagged).
+ * It exists so constants beyond the 12-bit immediate fixnum range can be
+ * expressed in programs and handed to HAL-facing primitives; arithmetic
+ * primitives still operate on fixnums only.
+ */
+
+/* Largest value secd_make_bignum accepts. */
+#define SECD_BIGNUM_MAX 0xFFFFFFu
+
+/* Box VAL as a BIGNUM. Returns SECD_NIL when the heap is full or VAL
+ * exceeds SECD_BIGNUM_MAX. */
+secd_value_t secd_make_bignum(secd_heap_t *heap, uint32_t val);
+
+/* Decode any integer value: FIXNUM -> sign-extended 12-bit; BIGNUM ->
+ * reassembled 24-bit; anything else -> 0. */
+uint32_t secd_integer_value(secd_heap_t *heap, secd_value_t val);
+
+/*
  * Byte-vector operations.
  *
  * A byte-vector handle's index is a slot in the descriptor table, not a

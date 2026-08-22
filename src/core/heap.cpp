@@ -337,8 +337,46 @@ secd_object_t *obj = secd_heap_get(heap, index);
     
     obj->car = car;
     obj->cdr = cdr;
-    
+
     return secd_make_pair(index);
+}
+
+/*
+ * Boxed wide integers.
+ */
+
+secd_value_t secd_make_bignum(secd_heap_t *heap, uint32_t val) {
+    if (!heap || val > SECD_BIGNUM_MAX) {
+        return SECD_NIL;
+    }
+    uint16_t index = secd_heap_alloc(heap, SECD_TYPE_BIGNUM);
+    if (index == 0) {
+        return SECD_NIL; /* Heap full */
+    }
+    secd_object_t *obj = secd_heap_get(heap, index);
+    if (!obj) {
+        return SECD_NIL;
+    }
+    /* Raw 12-bit payloads (untagged): the GC treats BIGNUM car/cdr as
+     * non-references, and tag 0x0 decodes as NIL which mark_object ignores. */
+    obj->car = (secd_value_t)((val >> 12) & 0x0FFFu);
+    obj->cdr = (secd_value_t)(val & 0x0FFFu);
+    return secd_make_handle(SECD_TYPE_BIGNUM, index);
+}
+
+uint32_t secd_integer_value(secd_heap_t *heap, secd_value_t val) {
+    switch (secd_get_type(val)) {
+        case SECD_TYPE_FIXNUM:
+            return (uint32_t)(int32_t)secd_fixnum_value(val);
+        case SECD_TYPE_BIGNUM: {
+            const secd_object_t *obj = secd_heap_get(heap, secd_get_index(val));
+            if (!obj) return 0;
+            return ((uint32_t)(obj->car & 0x0FFFu) << 12) |
+                   (uint32_t)(obj->cdr & 0x0FFFu);
+        }
+        default:
+            return 0;
+    }
 }
 
 /*

@@ -46,6 +46,8 @@ typedef enum {
     OP_LDC   = 0x02,  /* Load constant: push value */
     OP_LDF   = 0x03,  /* Load function: push closure */
     OP_LDE   = 0x04,  /* Load environment: push current env */
+    OP_LDCW  = 0x05,  /* Load wide constant: push boxed 24-bit unsigned int
+                         (4-byte instruction: opcode + big-endian value) */
     
     /* Arithmetic operations */
     OP_ADD   = 0x10,  /* Add */
