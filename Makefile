@@ -23,7 +23,7 @@ LIB = libsecd.a
 OUTPUT_DIR = output
 # Scratch dir for generated target metadata (zipped into .machine, not delivered)
 META_DIR = $(OUTPUT_DIR)/.build
-TARGETS = rp2040-pico rp2040-zero rp2350-zero rp2350-beetle seeed-xiao-samd21 esp32c3-supermini stamp-s3a blue-pill black-pill-f401
+TARGETS = rp2040-pico rp2040-zero rp2350-zero rp2350-beetle seeed-xiao-samd21 esp32c3-supermini stamp-s3a blue-pill black-pill-f401 esp32s3-devkit lolin-s3-mini lolin-s2-mini
 
 # Pico SDK
 PICO_SDK_PATH ?= /tmp/pico-sdk
@@ -461,6 +461,77 @@ $(OUTPUT_DIR)/stamp-s3a.machine: $(ESP32S3_BIN) $(ESP32S3_BUILD)/bootloader/boot
 		zf.write('$(META_DIR)/stamp-s3a.metadata.json', 'metadata.json'); \
 		zf.close()"
 	@echo "Created $@ (firmware.bin + bootloader + partition table)"
+
+# Other ESP32-S3 boards reuse the same chip firmware; only metadata differs.
+define S3-BOARD-PACK
+$(OUTPUT_DIR)/$(1).machine: $(ESP32S3_BIN) $(ESP32S3_BUILD)/bootloader/bootloader.bin $(ESP32S3_BUILD)/partition_table/partition-table.bin $$(META_DIR)/$(1).metadata.json
+	@mkdir -p $(OUTPUT_DIR)
+	@python3 -c "import zipfile; \
+		zf = zipfile.ZipFile('$$@', 'w', zipfile.ZIP_DEFLATED); \
+		zf.write('$(ESP32S3_BIN)', 'firmware.bin'); \
+		zf.write('$(ESP32S3_BUILD)/bootloader/bootloader.bin', 'bootloader.bin'); \
+		zf.write('$(ESP32S3_BUILD)/partition_table/partition-table.bin', 'partition-table.bin'); \
+		zf.write('$$(META_DIR)/$(1).metadata.json', 'metadata.json'); \
+		zf.close()"
+	@echo "Created $$@ (firmware.bin + bootloader + partition table)"
+
+$(OUTPUT_DIR)/$(1).release.machine: $(ESP32S3_BIN_RELEASE) $(ESP32S3_BUILD_RELEASE)/bootloader/bootloader.bin $(ESP32S3_BUILD_RELEASE)/partition_table/partition-table.bin $$(META_DIR)/$(1).metadata.json
+	@mkdir -p $(OUTPUT_DIR)
+	@python3 -c "import zipfile; \
+		zf = zipfile.ZipFile('$$@', 'w', zipfile.ZIP_DEFLATED); \
+		zf.write('$(ESP32S3_BIN_RELEASE)', 'firmware.bin'); \
+		zf.write('$(ESP32S3_BUILD_RELEASE)/bootloader/bootloader.bin', 'bootloader.bin'); \
+		zf.write('$(ESP32S3_BUILD_RELEASE)/partition_table/partition-table.bin', 'partition-table.bin'); \
+		zf.write('$$(META_DIR)/$(1).metadata.json', 'metadata.json'); \
+		zf.close()"
+	@echo "Created $$@ (firmware.bin + bootloader + partition table, release)"
+endef
+$(eval $(call S3-BOARD-PACK,esp32s3-devkit))
+$(eval $(call S3-BOARD-PACK,lolin-s3-mini))
+
+# Wemos/Lolin S2 Mini (ESP32-S2FH4): same shared esp32 HAL via its own IDF
+# project (set-target esp32s2). UART0 console; no USB HID in this build.
+ESP32S2_DIR = platforms/esp32s2
+ESP32S2_BUILD = $(ESP32S2_DIR)/build
+ESP32S2_BUILD_RELEASE = $(ESP32S2_DIR)/build-release
+ESP32S2_BIN = $(ESP32S2_BUILD)/secd_machine.bin
+ESP32S2_BIN_RELEASE = $(ESP32S2_BUILD_RELEASE)/secd_machine.bin
+ESP32S2_SRCS = src/hal/esp32.cpp src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp \
+	src/core/bytecode.cpp src/core/primitives.cpp src/core/symbols.cpp \
+	$(ESP32S2_DIR)/components/secd/secd_start.cpp \
+	$(ESP32S2_DIR)/CMakeLists.txt $(ESP32S2_DIR)/sdkconfig.defaults \
+	$(ESP32S2_DIR)/components/secd/CMakeLists.txt
+
+$(ESP32S2_BIN): $(ESP32S2_SRCS)
+	@. $(ESP_IDF_DIR)/export.sh >/dev/null 2>&1 && cd $(ESP32S2_DIR) && idf.py -B build build >/dev/null
+
+$(ESP32S2_BIN_RELEASE): $(ESP32S2_SRCS)
+	@. $(ESP_IDF_DIR)/export.sh >/dev/null 2>&1 && cd $(ESP32S2_DIR) && idf.py -B build-release -DSECD_DEBUG_BUILD=0 build >/dev/null
+
+define S2-PACK
+$(OUTPUT_DIR)/lolin-s2-mini.machine: $(ESP32S2_BIN) $$(ESP32S2_BUILD)/bootloader/bootloader.bin $$(ESP32S2_BUILD)/partition_table/partition-table.bin $$(META_DIR)/lolin-s2-mini.metadata.json
+	@mkdir -p $(OUTPUT_DIR)
+	@python3 -c "import zipfile; \
+		zf = zipfile.ZipFile('$$@', 'w', zipfile.ZIP_DEFLATED); \
+		zf.write('$(ESP32S2_BIN)', 'firmware.bin'); \
+		zf.write('$$(ESP32S2_BUILD)/bootloader/bootloader.bin', 'bootloader.bin'); \
+		zf.write('$$(ESP32S2_BUILD)/partition_table/partition-table.bin', 'partition-table.bin'); \
+		zf.write('$$(META_DIR)/lolin-s2-mini.metadata.json', 'metadata.json'); \
+		zf.close()"
+	@echo "Created $$@ (firmware.bin + bootloader + partition table)"
+
+$(OUTPUT_DIR)/lolin-s2-mini.release.machine: $(ESP32S2_BIN_RELEASE) $$(ESP32S2_BUILD_RELEASE)/bootloader/bootloader.bin $$(ESP32S2_BUILD_RELEASE)/partition_table/partition-table.bin $$(META_DIR)/lolin-s2-mini.metadata.json
+	@mkdir -p $(OUTPUT_DIR)
+	@python3 -c "import zipfile; \
+		zf = zipfile.ZipFile('$$@', 'w', zipfile.ZIP_DEFLATED); \
+		zf.write('$(ESP32S2_BIN_RELEASE)', 'firmware.bin'); \
+		zf.write('$$(ESP32S2_BUILD_RELEASE)/bootloader/bootloader.bin', 'bootloader.bin'); \
+		zf.write('$$(ESP32S2_BUILD_RELEASE)/partition_table/partition-table.bin', 'partition-table.bin'); \
+		zf.write('$$(META_DIR)/lolin-s2-mini.metadata.json', 'metadata.json'); \
+		zf.close()"
+	@echo "Created $$@ (firmware.bin + bootloader + partition table, release)"
+endef
+$(eval $(call S2-PACK))
 
 $(OUTPUT_DIR)/stamp-s3a.release.machine: $(ESP32S3_BIN_RELEASE) $(ESP32S3_BUILD_RELEASE)/bootloader/bootloader.bin $(ESP32S3_BUILD_RELEASE)/partition_table/partition-table.bin $(META_DIR)/stamp-s3a.metadata.json
 	@mkdir -p $(OUTPUT_DIR)

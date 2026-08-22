@@ -1,0 +1,30 @@
+{
+    "name": "esp32s3-devkit",
+    "chip": "esp32s3",
+    "board": "ESP32-S3-WROOM-1 DevKit",
+    "description": "Generic ESP32-S3-WROOM-1 dev kit (board marked esp32-s3-dev-kit-nxrx; NxxRxX module variant - bump flash_size below if it is a 16MB N16 part, layout works from 4MB up anyway). Dual-core Xtensa LX7 240MHz, USB-OTG. Addressable RGB LED on GPIO48 on classic DevKitC-1 wiring (newer revisions use GPIO38); BOOT button on GPIO0.",
+    "memory": {
+        "flash_size": 8388608,
+        "heap_size": 200000,
+        "stack_size": 16384,
+        "symbols_size": 512
+    },
+    "flash_layout": {
+        "firmware_addr": 0,
+        "firmware_size": 1572864,
+        "bytecode_addr": 1572864,
+        "bytecode_size": 1048576
+    },
+    "board_pins": {
+        "ws2812_pin": 48,
+        "led_pin": 48,
+        "user_button_pin": 0
+    },
+    "features": [
+        "gpio",
+        "uart",
+        "i2c",
+        "sleep",
+        "millis"
+    ]
+}

@@ -1,0 +1,30 @@
+{
+    "name": "lolin-s3-mini",
+    "chip": "esp32s3",
+    "board": "Wemos/Lolin S3 Mini v1.0.0",
+    "description": "Wemos (Lolin) S3 Mini v1.0.0: ESP32-S3FN4R2 (4MB flash, 2MB quad PSRAM), dual-core Xtensa LX7 240MHz, USB-C on native OTG. Addressable RGB LED (WS2812) on GPIO47, BOOT button on GPIO0.",
+    "memory": {
+        "flash_size": 4194304,
+        "heap_size": 200000,
+        "stack_size": 16384,
+        "symbols_size": 512
+    },
+    "flash_layout": {
+        "firmware_addr": 0,
+        "firmware_size": 1572864,
+        "bytecode_addr": 1572864,
+        "bytecode_size": 1048576
+    },
+    "board_pins": {
+        "ws2812_pin": 47,
+        "led_pin": 47,
+        "user_button_pin": 0
+    },
+    "features": [
+        "gpio",
+        "uart",
+        "i2c",
+        "sleep",
+        "millis"
+    ]
+}
