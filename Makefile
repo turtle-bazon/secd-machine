@@ -103,6 +103,22 @@ STM32F401_CFLAGS = -mcpu=cortex-m4 -mthumb -Os -ffunction-sections -fdata-sectio
 STM32F401_CFLAGS_RELEASE = $(filter-out -DSECD_DEBUG_BUILD=1,$(STM32F401_CFLAGS)) -DSECD_DEBUG_BUILD=0
 STM32F401_SRCS = $(STM32_CORE_SRCS) src/hal/stm32f4.cpp
 
+# nRF52840 SuperMini / XIAO nRF52840 BLE (bare metal, Cortex-M4F)
+NRF52840_DIR = build/nrf52840
+NRF52840_DIR_RELEASE = build/nrf52840-release
+NRF52840_CC = arm-none-eabi-g++
+NRF52840_CORE_SRCS = platforms/nrf52840/main.cpp platforms/nrf52840/startup_nrf52840.cpp \
+	platforms/nrf52840/syscalls.cpp \
+	src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp src/core/bytecode.cpp \
+	src/core/primitives.cpp src/core/symbols.cpp
+
+NRF52840_CFLAGS = -mcpu=cortex-m4 -mthumb -Os -ffunction-sections -fdata-sections \
+	-Wall -Wextra -Iinclude -DSECD_FEATURE_GPIO=1 -DSECD_FEATURE_UART=1 -DSECD_FEATURE_I2C=1 \
+	-DSECD_MACHINE_VERSION='"0.0.1.0"' -DSECD_PLATFORM_NAME='"nRF52840"' \
+	-DSECD_HEAP_OBJECTS=4096 -DSECD_FEATURES_STR='"gpio,uart,i2c"' -DSECD_DEBUG_BUILD=1
+NRF52840_CFLAGS_RELEASE = $(filter-out -DSECD_DEBUG_BUILD=1,$(NRF52840_CFLAGS)) -DSECD_DEBUG_BUILD=0
+NRF52840_SRCS = $(NRF52840_CORE_SRCS) src/hal/nrf52840.cpp
+
 define STM32-LINK
 	@mkdir -p $(1)
 	@echo "void __cxa_pure_virtual(void) {}" > $(1)/dummy.cpp
@@ -124,6 +140,21 @@ $(STM32F401_DIR)/secd-machine.elf: $(STM32F401_SRCS)
 $(STM32F401_DIR_RELEASE)/secd-machine.elf: $(STM32F401_SRCS)
 	$(call STM32-LINK,$(STM32F401_DIR_RELEASE),$(STM32_CC),$(STM32F401_CFLAGS_RELEASE),platforms/stm32/stm32f401rc.ld,$(STM32F401_SRCS))
 
+
+define NRF52840-LINK
+	@mkdir -p $(1)
+	@echo "void __cxa_pure_virtual(void) {}" > $(1)/dummy.cpp
+	@arm-none-eabi-g++ -c $(1)/dummy.cpp -o $(1)/dummy.o
+	@arm-none-eabi-ar rcs $(1)/libstdc++.a $(1)/dummy.o
+	@$(NRF52840_CC) $(NRF52840_CFLAGS) $(NRF52840_SRCS) -Wl,-T,platforms/nrf52840/nrf52840.ld -Wl,--gc-sections -nostartfiles -L$(1) -lm -o $(1)/secd-machine.elf
+endef
+
+$(NRF52840_DIR)/secd-machine.elf: $(NRF52840_SRCS)
+	@mkdir -p $(NRF52840_DIR)
+	@arm-none-eabi-g++ $(NRF52840_CFLAGS) $(NRF52840_SRCS) -Wl,-T,platforms/nrf52840/nrf52840.ld -Wl,--gc-sections -nostartfiles -L$(NRF52840_DIR) -lm -o $@
+
+build/%/firmware.bin: build/%/secd-machine.elf
+	@arm-none-eabi-objcopy -O binary $$< $$@
 build/%/firmware.bin: build/%/secd-machine.elf
 	@arm-none-eabi-objcopy -O binary $< $@
 
