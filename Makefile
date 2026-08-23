@@ -141,20 +141,8 @@ $(STM32F401_DIR_RELEASE)/secd-machine.elf: $(STM32F401_SRCS)
 	$(call STM32-LINK,$(STM32F401_DIR_RELEASE),$(STM32_CC),$(STM32F401_CFLAGS_RELEASE),platforms/stm32/stm32f401rc.ld,$(STM32F401_SRCS))
 
 
-define NRF52840-LINK
-	@mkdir -p $(1)
-	@echo "void __cxa_pure_virtual(void) {}" > $(1)/dummy.cpp
-	@arm-none-eabi-g++ -c $(1)/dummy.cpp -o $(1)/dummy.o
-	@arm-none-eabi-ar rcs $(1)/libstdc++.a $(1)/dummy.o
-	@$(NRF52840_CC) $(NRF52840_CFLAGS) $(NRF52840_SRCS) -Wl,-T,platforms/nrf52840/nrf52840.ld -Wl,--gc-sections -nostartfiles -L$(1) -lm -o $(1)/secd-machine.elf
-endef
 
-$(NRF52840_DIR)/secd-machine.elf: $(NRF52840_SRCS)
-	@mkdir -p $(NRF52840_DIR)
-	@arm-none-eabi-g++ $(NRF52840_CFLAGS) $(NRF52840_SRCS) -Wl,-T,platforms/nrf52840/nrf52840.ld -Wl,--gc-sections -nostartfiles -L$(NRF52840_DIR) -lm -o $@
 
-build/%/firmware.bin: build/%/secd-machine.elf
-	@arm-none-eabi-objcopy -O binary $$< $$@
 build/%/firmware.bin: build/%/secd-machine.elf
 	@arm-none-eabi-objcopy -O binary $< $@
 
@@ -170,6 +158,25 @@ endef
 
 $(OUTPUT_DIR)/blue-pill.machine: $(STM32F103_DIR)/firmware.bin $(META_DIR)/blue-pill.metadata.json
 	$(call STM32-PACK,$(STM32F103_DIR),blue-pill,$@)
+
+# nRF52840 board .machine packaging
+$(OUTPUT_DIR)/nrf52840-supermini.machine: build/nrf52840/firmware.bin $(META_DIR)/nrf52840-supermini.metadata.json
+	@mkdir -p $(OUTPUT_DIR)
+	@python3 -c "import zipfile; \
+		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
+		zf.write('build/nrf52840/firmware.bin', 'firmware.bin'); \
+		zf.write('$(META_DIR)/nrf52840-supermini.metadata.json', 'metadata.json'); \
+		zf.close()"
+	@echo "Created $@ (firmware.bin + metadata.json)"
+
+$(OUTPUT_DIR)/nrf52840-supermini.release.machine: build/nrf52840/firmware.bin $(META_DIR)/nrf52840-supermini.metadata.json
+	@mkdir -p $(OUTPUT_DIR)
+	@python3 -c "import zipfile; \
+		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
+		zf.write('build/nrf52840/firmware.bin', 'firmware.bin'); \
+		zf.write('$(META_DIR)/nrf52840-supermini.metadata.json', 'metadata.json'); \
+		zf.close()"
+	@echo "Created $@ (firmware.bin + metadata.json)"
 
 $(OUTPUT_DIR)/blue-pill.release.machine: $(STM32F103_DIR_RELEASE)/firmware.bin $(META_DIR)/blue-pill.metadata.json
 	$(call STM32-PACK,$(STM32F103_DIR_RELEASE),blue-pill,$@)
