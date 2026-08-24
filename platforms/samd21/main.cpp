@@ -68,7 +68,7 @@ static int load_bytecode(void) {
 }
 
 int main(void) {
-    hal_init();
+    secd_hal_init();
 
 #if SECD_DEBUG_BUILD
     SECD_INFO("SECD Machine v");

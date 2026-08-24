@@ -160,7 +160,7 @@ static int load_bytecode(void) {
 }
 
 extern "C" int secd_start(void) {
-    hal_init();
+    secd_hal_init();
 
     /* The USB-Serial/JTAG console drops bytes printed before the host
      * re-attaches after a hard reset (data FIFO is small and the connection

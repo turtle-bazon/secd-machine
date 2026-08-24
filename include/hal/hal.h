@@ -38,7 +38,7 @@ extern "C" {
 #define HAL_GPIO_PWM     2
 
 /* Initialize HAL */
-void hal_init(void);
+void secd_hal_init(void);
 
 /* Memory management */
 void* hal_malloc(size_t size);

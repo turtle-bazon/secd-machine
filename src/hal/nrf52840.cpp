@@ -143,7 +143,7 @@ static void clock_init(void) {
     reg_write(SYST_CSR, SYST_ENABLE | SYST_TICKINT | SYST_CLKSOURCE);
 }
 
-void hal_init(void) {
+void secd_hal_init(void) {
     clock_init();
 #if SECD_FEATURE_UART
     hal_serial_init(115200);
@@ -363,12 +363,90 @@ void hal_wave_play(int pin, int start_level,
 
 
 /* ------------------------------ Radio (ESB) ---------------------------- */
-/* Generic 2.4GHz radio for split keyboard communication.
- * Full ESB implementation deferred until hardware testing. */
-int hal_radio_init(void) { return -1; }
-void hal_radio_set_address(const uint8_t *addr) {}
-void hal_radio_set_channel(uint8_t ch) {}
-void hal_radio_send(const uint8_t *data, size_t len) {}
+/* ------------------------------ Radio (ESB) ---------------------------- */
+/* Enhanced ShockBurst — direct register access, no SoftDevice needed. */
+
+#define NRF_RADIO_BASE   0x40001000u
+#define R_TASKS_TXEN     0x000u
+#define R_TASKS_RXEN     0x004u
+#define R_TASKS_START    0x008u
+#define R_TASKS_DISABLE  0x00Cu
+#define R_EVT_READY      0x100u
+#define R_EVT_END        0x120u
+#define R_EVT_DISABLED   0x128u
+#define R_MODE           0x510u
+#define R_POWER          0x514u
+#define R_PACKETPTR      0x51Cu
+#define R_BASE0          0x520u
+#define R_PREFIX0        0x528u
+#define R_TXADDRESS      0x530u
+#define R_RXADDRESSES    0x534u
+#define R_PCNF0          0x538u
+#define R_PCNF1          0x53Cu
+#define R_FREQUENCY      0x508u
+#define R_CRCINIT        0x560u
+#define R_CRCPOLY        0x564u
+#define R_CRCCNF         0x568u
+
+static uint8_t esb_buf[33];
+
+static inline void esb_disable(void) {
+    reg_write(NRF_RADIO_BASE + R_TASKS_DISABLE, 1);
+    while (!(reg_read(NRF_RADIO_BASE + R_EVT_DISABLED) & 1)) {}
+}
+
+int hal_radio_init(void) {
+    reg_write(NRF_RADIO_BASE + R_MODE, 1);
+    reg_write(NRF_RADIO_BASE + R_POWER, 4);
+    reg_write(NRF_RADIO_BASE + R_PCNF0, 8);
+    reg_write(NRF_RADIO_BASE + R_PCNF1, (3 << 16) | 32);
+    reg_write(NRF_RADIO_BASE + R_CRCINIT, 0xFFFF);
+    reg_write(NRF_RADIO_BASE + R_CRCPOLY, 0x11021 & 0xFFFF);
+    reg_write(NRF_RADIO_BASE + R_CRCCNF, 2);
+    reg_write(NRF_RADIO_BASE + R_BASE0, 0xE7E7E7E7);
+    reg_write(NRF_RADIO_BASE + R_PREFIX0, 0xE7);
+    reg_write(NRF_RADIO_BASE + R_TXADDRESS, 0);
+    reg_write(NRF_RADIO_BASE + R_RXADDRESSES, 1);
+    reg_write(NRF_RADIO_BASE + R_FREQUENCY, 2);
+    return 0;
+}
+
+void hal_radio_set_address(const uint8_t *addr) {
+    uint32_t base_addr = ((uint32_t)(uint8_t)addr[1] << 24)
+                       | ((uint32_t)(uint8_t)addr[2] << 16)
+                       | ((uint32_t)(uint8_t)addr[3] << 8)
+                       | (uint32_t)(uint8_t)addr[4];
+    reg_write(NRF_RADIO_BASE + R_BASE0, base_addr);
+    reg_write(NRF_RADIO_BASE + R_PREFIX0, addr[0]);
+}
+
+void hal_radio_set_channel(uint8_t ch) {
+    reg_write(NRF_RADIO_BASE + R_FREQUENCY, ch);
+}
+
+int hal_radio_send(const uint8_t *data, size_t len) {
+    if (!len || len > 32) return -1;
+    esb_disable();
+    esb_buf[0] = len;
+    memcpy(&esb_buf[1], data, len);
+    reg_write(NRF_RADIO_BASE + R_PACKETPTR, (uint32_t)(uintptr_t)esb_buf);
+    reg_write(NRF_RADIO_BASE + R_TXADDRESS, 0);
+    reg_write(NRF_RADIO_BASE + R_TASKS_TXEN, 1);
+    while (!(reg_read(NRF_RADIO_BASE + R_EVT_READY) & 1)) {}
+    reg_write(NRF_RADIO_BASE + R_TASKS_START, 1);
+    while (!(reg_read(NRF_RADIO_BASE + R_EVT_END) & 1)) {}
+    esb_disable();
+    return (int)len;
+}
+
+/* ------------------------------- BLE HID -------------------------------- */
+/* SoftDevice-based BLE HID deferred. Stubs for now so the build links;
+ * %ble-* primitives return failure codes until real stack is added. */
+int hal_ble_init(void) { return -1; }
+void hal_ble_set_name(const char *name) {}
+int hal_ble_connected(void) { return 0; }
+void hal_ble_key_report(uint8_t mods, uint8_t keys[6]) {}
+void hal_ble_mouse_report(int8_t dx, int8_t dy, uint8_t btns) {}
 
 /* ------------------------------- Flash ----------------------------------- */
 uint32_t hal_flash_size(void) { return 1024u * 1024u; }

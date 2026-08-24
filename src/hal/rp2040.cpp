@@ -49,7 +49,7 @@ static uint8_t heap_pool[HEAP_SIZE];
 static uint8_t stack_pool[STACK_SIZE];
 static size_t heap_used = 0;
 
-void hal_init(void) {
+void secd_hal_init(void) {
     stdio_init_all();
     heap_used = 0;
 }
@@ -306,7 +306,7 @@ void hal_sleep(uint32_t ms) {
  * Waveform player: drive a pin through a precomputed pulse train.
  * Cortex-M0+ has no cycle counter, so sub-microsecond timing uses a
  * busy loop calibrated against the 1us system timer at startup
- * (calibration happens once in hal_init; adjust on real hardware).
+ * (calibration happens once in secd_hal_init; adjust on real hardware).
  */
 static uint32_t wave_ns_per_loop = 0;
 

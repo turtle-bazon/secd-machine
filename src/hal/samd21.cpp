@@ -101,7 +101,7 @@ static void clk_wait_sync(void) {
 
 /* SysTick_Handler lives in startup_samd21.cpp and increments secd_systick_ms. */
 
-void hal_init(void) {
+void secd_hal_init(void) {
     /* Disable write-protection for all peripherals (PAC0/PAC1/PAC2) */
     reg_write(PAC0_WPCLR, 0xFFFFFFFEu);
     reg_write(PAC1_WPCLR, 0xFFFFFFFEu);

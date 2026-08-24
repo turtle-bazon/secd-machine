@@ -36,7 +36,7 @@
 
 extern "C" {
 
-void hal_init(void) {
+void secd_hal_init(void) {
     /* app_main already has the console and timer subsystems running. */
 }
 
@@ -311,15 +311,241 @@ void hal_wave_play(int pin, int start_level, const uint16_t *duration_ns, int co
 }
 
 } /* extern "C" */
-/* --------------------------- Radio / BLE stubs ------------------------- */
+
+/* --------------------------- Radio: ESP-NOW ---------------------------- */
+#if defined(__has_include)
+#  if __has_include(<esp_now.h>)
+#    define SECD_HAS_ESP_NOW 1
+#  endif
+#endif
+#ifdef SECD_HAS_ESP_NOW
+#include <esp_now.h>
+#include <esp_wifi.h>
+#include <string.h>
+
+static bool s_espnow_ready = false;
+static uint8_t s_peer_mac[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
+static void (*s_radio_rx_cb)(const uint8_t *, size_t) = NULL;
+
+static void espnow_recv_cb(const esp_now_recv_info *info, const uint8_t *data, int len) {
+    if (s_radio_rx_cb && data && len > 0)
+        s_radio_rx_cb(data, len);
+}
+
+static void espnow_send_cb(const wifi_tx_info_t *tx_info, esp_now_send_status_t st) {
+    (void)tx_info; (void)st;
+}
+
+int hal_radio_init(void) {
+    if (s_espnow_ready) return 0;
+    wifi_mode_t mode;
+    if (esp_wifi_get_mode(&mode) != ESP_OK || mode == WIFI_MODE_NULL) {
+        if (esp_wifi_set_mode(WIFI_MODE_STA) != ESP_OK) return -1;
+    }
+    if (esp_now_init() != ESP_OK) return -1;
+    esp_now_register_recv_cb(espnow_recv_cb);
+    esp_now_register_send_cb(espnow_send_cb);
+    s_espnow_ready = true;
+    return 0;
+}
+
+void hal_radio_set_address(const uint8_t *addr) {
+    memcpy(s_peer_mac, addr, 6);
+    if (!s_espnow_ready) return;
+    esp_now_del_peer(s_peer_mac);
+    esp_now_peer_info_t peer = {};
+    memcpy(peer.peer_addr, addr, 6);
+    peer.channel = 0; peer.encrypt = false;
+    esp_now_add_peer(&peer);
+}
+
+void hal_radio_set_channel(uint8_t ch) {
+    esp_wifi_set_channel(ch + 1, WIFI_SECOND_CHAN_NONE);
+}
+
+int hal_radio_send(const uint8_t *data, size_t len) {
+    if (!s_espnow_ready || len == 0 || len > 250) return -1;
+    esp_err_t rc = esp_now_send(s_peer_mac, data, len);
+    return rc == ESP_OK ? (int)len : -1;
+}
+
+void hal_radio_on_receive(void (*cb)(const uint8_t *, size_t)) {
+    s_radio_rx_cb = cb;
+}
+
+#else /* !SECD_HAS_ESP_NOW */
 int hal_radio_init(void) { return -1; }
 void hal_radio_set_address(const uint8_t *addr) {}
 void hal_radio_set_channel(uint8_t ch) {}
 int hal_radio_send(const uint8_t *data, size_t len) { return -1; }
 void hal_radio_on_receive(void (*cb)(const uint8_t *, size_t)) {}
+#endif /* SECD_HAS_ESP_NOW */
+
+/* --------------------------- BLE: NimBLE HID ---------------------------- */
+#if defined(SECD_PLATFORM_ESP32S3) || defined(CONFIG_BT_ENABLED)
+#include <nimble/nimble_port.h>
+#include <nimble/nimble_port_freertos.h>
+#include <host/ble_hs.h>
+#include <host/ble_gap.h>
+#include <services/gap/ble_svc_gap.h>
+#include <services/hid/ble_svc_hid.h>
+
+static bool s_ble_synced = false;
+static uint16_t s_hid_conn = BLE_HS_CONN_HANDLE_NONE;
+static uint16_t s_report_handle = 0; /* alias of input handle */
+static char s_dev_name[32] = "SECD Device";
+static uint8_t s_key_report[8] = {0}; /* mods + reserved + 6 keys */
+
+static const uint8_t kHidReportMap[] = {
+    0x05, 0x01,  /* Usage Page (Generic Desktop)      */
+    0x09, 0x06,  /* Usage (Keyboard)                  */
+    0xA1, 0x01,  /* Collection (Application)          */
+    0x85, 0x01,  /*   Report ID 1                     */
+    0x05, 0x07,  /*   Usage Page (Keyboard/Keypad)    */
+    0x19, 0xE0, 0x29, 0xE7,  /*   Usage Min/Max       */
+    0x15, 0x00, 0x25, 0x01,  /*   Logical Min/Max     */
+    0x75, 0x01,  /*   Report Size 1                   */
+    0x95, 0x08,  /*   Report Count 8                  */
+    0x81, 0x02,  /*   Input (Data,Var,Abs) modifiers  */
+    0x95, 0x01, 0x75, 0x08, 0x81, 0x01, /* Input(Const) pad */
+    0x95, 0x06, 0x75, 0x08,  /*   6 key slots         */
+    0x15, 0x00, 0x25, 0x65,
+    0x05, 0x07, 0x19, 0x00, 0x29, 0x65,
+    0x81, 0x00,  /*   Input (Data,Ary,Abs)            */
+    0xC0,        /* End Collection                    */
+
+    0x05, 0x01,  /* Usage Page (Generic Desktop) — mouse */
+    0x09, 0x02,
+    0xA1, 0x01,
+    0x85, 0x02,
+    0x09, 0x01, 0xA1, 0x00,
+    0x05, 0x09, 0x19, 0x01, 0x29, 0x03,
+    0x15, 0x00, 0x25, 0x01, 0x95, 0x03, 0x75, 0x01,
+    0x81, 0x02,
+    0x95, 0x01, 0x75, 0x05, 0x81, 0x01,
+    0x05, 0x01, 0x09, 0x30, 0x09, 0x31,
+    0x15, 0x81, 0x25, 0x7F, 0x75, 0x08, 0x95, 0x02,
+    0x81, 0x06,
+    0xC0, 0xC0,
+};
+
+static int hid_access_cb(uint16_t conn, uint16_t attr,
+                         struct ble_gatt_access_ctxt *ctxt, void *arg) {
+    if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+        os_mbuf_append(ctxt->om, kHidReportMap, sizeof(kHidReportMap));
+        return 0;
+    }
+    return BLE_ATT_ERR_READ_NOT_PERMITTED;
+}
+
+/* HID service GATT table: Report Map (read), Report (notify via input) */
+static uint16_t s_report_map_handle;
+static uint16_t s_input_report_handle;
+
+/* Named UUID vars: BLE_UUID16_DECLARE takes address of an rvalue (compound
+ * literal), which trips -Werror=permissive under IDF's strict flags. */
+static const ble_uuid16_t uuid_hid_svc   = BLE_UUID16_INIT(0x1812);
+static const ble_uuid16_t uuid_report_map = BLE_UUID16_INIT(0x2A4B);
+static const ble_uuid16_t uuid_input_rpt  = BLE_UUID16_INIT(0x2A4D);
+
+static const struct ble_gatt_svc_def kHidSvc[] = {
+    {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = (const ble_uuid_t *)&uuid_hid_svc,
+        .characteristics = (struct ble_gatt_chr_def[]) {
+            { .uuid = (const ble_uuid_t *)&uuid_report_map,
+              .access_cb = hid_access_cb,
+              .flags = BLE_GATT_CHR_F_READ,
+              .val_handle = &s_report_map_handle },
+            { .uuid = (const ble_uuid_t *)&uuid_input_rpt,
+              .access_cb = hid_access_cb,
+              .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+              .val_handle = &s_input_report_handle },
+            { 0 }
+        }
+    },
+    { 0 }
+};
+
+
+
+static void ble_on_sync(void) { s_ble_synced = true; }
+static void ble_on_reset(int reason) { (void)reason; s_ble_synced = false; }
+
+static void start_advertising(void) {
+    struct ble_gap_adv_params ap = {};
+    ap.conn_mode = BLE_GAP_CONN_MODE_UND;
+    ap.disc_mode = BLE_GAP_DISC_MODE_GEN;
+    ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC, NULL, BLE_HS_FOREVER, &ap, NULL, NULL);
+}
+
+static int gap_event_cb(struct ble_gap_event *event, void *arg) {
+    switch (event->type) {
+    case BLE_GAP_EVENT_CONNECT:
+        if (event->connect.status == 0)
+            s_hid_conn = event->connect.conn_handle;
+        break;
+    case BLE_GAP_EVENT_DISCONNECT:
+        s_hid_conn = BLE_HS_CONN_HANDLE_NONE;
+        start_advertising();
+        break;
+    }
+    return 0;
+}
+
+static void host_task_stub(void *param);
+
+int hal_ble_init(void) {
+    nimble_port_init();
+    ble_hs_cfg.sync_cb = ble_on_sync;
+    ble_hs_cfg.reset_cb = ble_on_reset;
+
+    /* HID device info service */
+    ble_svc_gap_device_name_set(s_dev_name);
+
+    /* Register HID service (our manual GATT table) */
+    ble_gatts_count_cfg(kHidSvc);
+    ble_gatts_add_svcs(kHidSvc);
+
+    nimble_port_freertos_init(host_task_stub);
+    return 0;
+}
+
+void host_task_stub(void *param) {
+    nimble_port_run();
+    nimble_port_freertos_deinit();
+}
+
+void hal_ble_set_name(const char *name) {
+    strncpy(s_dev_name, name ? name : "SECD Device", sizeof(s_dev_name)-1);
+    s_dev_name[sizeof(s_dev_name)-1] = '\0';
+    ble_svc_gap_device_name_set(s_dev_name);
+}
+
+int hal_ble_connected(void) {
+    return s_hid_conn != BLE_HS_CONN_HANDLE_NONE ? 1 : 0;
+}
+
+void hal_ble_key_report(uint8_t mods, uint8_t keys[6]) {
+    s_key_report[0] = mods;
+    memcpy(&s_key_report[2], keys, 6);
+    if (hal_ble_connected()) {
+        struct os_mbuf *om = ble_hs_mbuf_from_flat(s_key_report, sizeof(s_key_report));
+        if (om) ble_gattc_notify_custom(s_hid_conn, s_report_handle, om);
+    }
+}
+
+void hal_ble_mouse_report(int8_t dx, int8_t dy, uint8_t btns) {
+    uint8_t rpt[4] = {(uint8_t)(btns & 7), (uint8_t)dx, (uint8_t)dy, 0};
+    if (hal_ble_connected()) {
+        struct os_mbuf *om = ble_hs_mbuf_from_flat(rpt, sizeof(rpt));
+        if (om) ble_gattc_notify_custom(s_hid_conn, s_report_handle, om);
+    }
+}
+#else
 int hal_ble_init(void) { return -1; }
 void hal_ble_set_name(const char *name) {}
 int hal_ble_connected(void) { return 0; }
 void hal_ble_key_report(uint8_t mods, uint8_t keys[6]) {}
 void hal_ble_mouse_report(int8_t dx, int8_t dy, uint8_t btns) {}
-
+#endif

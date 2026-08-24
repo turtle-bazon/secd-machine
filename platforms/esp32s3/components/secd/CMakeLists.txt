@@ -19,6 +19,7 @@ idf_component_register(
         "${CMAKE_CURRENT_LIST_DIR}"
     PRIV_REQUIRES
         app_update cherry-embedded__cherryusb esp_driver_gpio esp_driver_uart esp_driver_i2c esp_partition esp_timer esp_system freertos
+        bt nvs_flash esp_wifi
 )
 
 # Feature macros must match this board's primitive IDs in the metadata.
@@ -33,3 +34,8 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
     SECD_BYTEVEC_ARENA_SIZE=262144
     SECD_FEATURES_STR="gpio,uart,i2c,usb"
     SECD_DEBUG_BUILD=$<BOOL:${SECD_DEBUG_BUILD}>)
+# NimBLE GATT table macros trigger -Waddress-of-rvalue / missing-field-initializers
+target_compile_options(${COMPONENT_LIB} PRIVATE
+    -fpermissive
+    -Wno-missing-field-initializers
+    -Wno-address-of-rvalue)

@@ -179,7 +179,7 @@ static void clock_init(void) {
     reg_write(SYST_CSR, SYST_ENABLE | SYST_TICKINT | SYST_CLKSOURCE);
 }
 
-void hal_init(void) {
+void secd_hal_init(void) {
     clock_init();
 #if SECD_FEATURE_UART
     hal_serial_init(115200);

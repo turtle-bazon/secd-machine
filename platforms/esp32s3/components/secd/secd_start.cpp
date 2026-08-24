@@ -190,7 +190,7 @@ static int load_bytecode(void) {
 }
 
 extern "C" int secd_start(void) {
-    hal_init();
+    secd_hal_init();
 
 #if SECD_DEBUG_BUILD && SECD_FEATURE_HID
     secd_usb_init();
