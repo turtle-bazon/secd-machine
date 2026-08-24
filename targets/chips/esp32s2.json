@@ -123,6 +123,34 @@
         "%bn-from-string": {
             "id": 38,
             "args": 1
+        },
+        "%radio-init": {
+            "id": 39,
+            "args": 2
+        },
+        "%radio-send": {
+            "id": 40,
+            "args": 1
+        },
+        "%radio-address": {
+            "id": 41,
+            "args": 1
+        },
+        "%ble-init": {
+            "id": 42,
+            "args": 0
+        },
+        "%ble-name": {
+            "id": 43,
+            "args": 1
+        },
+        "%ble-key": {
+            "id": 44,
+            "args": 2
+        },
+        "%ble-mouse": {
+            "id": 45,
+            "args": 3
         }
     },
     "usb": {

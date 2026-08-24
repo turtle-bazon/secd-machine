@@ -21,6 +21,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Radio / BLE HAL interface */
+int hal_radio_init(void);
+void hal_radio_set_address(const uint8_t *addr);
+void hal_radio_set_channel(uint8_t ch);
+int hal_radio_send(const uint8_t *data, size_t len);
+void hal_radio_on_receive(void (*cb)(const uint8_t *, size_t));
+int hal_ble_init(void);
+void hal_ble_set_name(const char *name);
+int hal_ble_connected(void);
+void hal_ble_key_report(uint8_t mods, uint8_t keys[6]);
+void hal_ble_mouse_report(int8_t dx, int8_t dy, uint8_t btns);
+
 /*
  * Primitive operations implementation.
  *
@@ -988,6 +1000,67 @@ secd_value_t prim_wave_play(secd_heap_t *heap, secd_value_t args) {
 }
 
 
+
+/* --------------------------- Radio / BLE HID ---------------------------- */
+/* Generic 2.4GHz radio for split halves and BLE HID for PC connection.
+ * Stub implementations on most platforms; nRF52840 gets real ones. */
+
+secd_value_t prim_radio_init(secd_heap_t *heap, secd_value_t args) {
+    (void)heap; (void)args;
+    return secd_make_fixnum(hal_radio_init());
+}
+
+secd_value_t prim_radio_send(secd_heap_t *heap, secd_value_t args) {
+    secd_value_t data = get_arg1(heap, args);
+    if (!secd_is_bytevec(data)) return secd_make_fixnum(-1);
+    secd_bytevec_t *bv = secd_bytevec_get(heap, secd_get_index(data));
+    if (!bv) return secd_make_fixnum(-1);
+    return secd_make_fixnum(hal_radio_send(bv->data, bv->len));
+}
+
+secd_value_t prim_radio_address(secd_heap_t *heap, secd_value_t args) {
+    uint32_t addr = (uint32_t)(uint16_t)secd_get_index(get_arg1(heap, args));
+    uint8_t bytes[4] = {(uint8_t)(addr >> 24), (uint8_t)(addr >> 16),
+                        (uint8_t)(addr >> 8), (uint8_t)addr};
+    hal_radio_set_address(bytes);
+    return SECD_NIL;
+}
+
+secd_value_t prim_ble_init(secd_heap_t *heap, secd_value_t args) {
+    (void)heap; (void)args;
+    return secd_make_fixnum(hal_ble_init());
+}
+
+secd_value_t prim_ble_name(secd_heap_t *heap, secd_value_t args) {
+    /* Takes a string byte-vector, sets BLE device name */
+    secd_value_t sv = get_arg1(heap, args);
+    if (!secd_is_bytevec(sv)) return SECD_NIL;
+    secd_bytevec_t *bv = secd_bytevec_get(heap, secd_get_index(sv));
+    if (!bv || bv->len == 0) return SECD_NIL;
+    char name[32];
+    size_t nlen = bv->len < sizeof(name)-1 ? bv->len : sizeof(name)-1;
+    memcpy(name, bv->data, nlen);
+    name[nlen] = '\0';
+    hal_ble_set_name(name);
+    return SECD_NIL;
+}
+
+secd_value_t prim_ble_key(secd_heap_t *heap, secd_value_t args) {
+    int16_t mods = secd_fixnum_value(get_arg1(heap, args));
+    int16_t usage = secd_fixnum_value(get_arg2(heap, args));
+    uint8_t keys[6] = {0};
+    keys[0] = (uint8_t)usage;
+    hal_ble_key_report((uint8_t)mods, keys);
+    return SECD_NIL;
+}
+
+secd_value_t prim_ble_mouse(secd_heap_t *heap, secd_value_t args) {
+    int8_t dx = (int8_t)secd_fixnum_value(get_arg1(heap, args));
+    int8_t dy = (int8_t)secd_fixnum_value(get_arg2(heap, args));
+    hal_ble_mouse_report(dx, dy, 0);
+    return SECD_NIL;
+}
+
 /*
  * UTF-16LE encoding / decoding primitives (utf16-enc / utf16-dec).
  *
@@ -1145,6 +1218,7 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
     secd_register_prim(registry, "%adc-read", prim_adc_read);
     secd_register_prim(registry, "%pwm-write", prim_pwm_write);
     secd_register_prim(registry, "%wave-play", prim_wave_play);
+
 #if SECD_FEATURE_I2C
     /* Registered before USB so the I2C ids (26-29) are identical on every
        board that exposes them, regardless of whether the board also has USB
@@ -1204,6 +1278,14 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
     secd_register_prim(registry, "%bn-cmp", prim_bn_cmp);
     secd_register_prim(registry, "%bn-to-string", prim_bn_to_string);
     secd_register_prim(registry, "%bn-from-string", prim_bn_from_string);
+    /* Radio / BLE HID primitives */
+    secd_register_prim(registry, "%radio-init", prim_radio_init);
+    secd_register_prim(registry, "%radio-send", prim_radio_send);
+    secd_register_prim(registry, "%radio-address", prim_radio_address);
+    secd_register_prim(registry, "%ble-init", prim_ble_init);
+    secd_register_prim(registry, "%ble-name", prim_ble_name);
+    secd_register_prim(registry, "%ble-key", prim_ble_key);
+    secd_register_prim(registry, "%ble-mouse", prim_ble_mouse);
 
     /* Universal software primitives — registered UNCONDITIONALLY so they
        exist in EVERY firmware image (S3, C3, rp2040, ...). Part of the

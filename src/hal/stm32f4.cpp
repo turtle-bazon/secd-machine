@@ -584,3 +584,16 @@ void hal_reset(void) {
     for (;;) {
     }
 }
+
+/* --------------------------- Radio / BLE stubs ------------------------- */
+int hal_radio_init(void) { return -1; }
+void hal_radio_set_address(const uint8_t *addr) {}
+void hal_radio_set_channel(uint8_t ch) {}
+int hal_radio_send(const uint8_t *data, size_t len) { return -1; }
+void hal_radio_on_receive(void (*cb)(const uint8_t *, size_t)) {}
+int hal_ble_init(void) { return -1; }
+void hal_ble_set_name(const char *name) {}
+int hal_ble_connected(void) { return 0; }
+void hal_ble_key_report(uint8_t mods, uint8_t keys[6]) {}
+void hal_ble_mouse_report(int8_t dx, int8_t dy, uint8_t btns) {}
+

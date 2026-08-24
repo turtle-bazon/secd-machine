@@ -361,6 +361,15 @@ void hal_wave_play(int pin, int start_level,
     }
 }
 
+
+/* ------------------------------ Radio (ESB) ---------------------------- */
+/* Generic 2.4GHz radio for split keyboard communication.
+ * Full ESB implementation deferred until hardware testing. */
+int hal_radio_init(void) { return -1; }
+void hal_radio_set_address(const uint8_t *addr) {}
+void hal_radio_set_channel(uint8_t ch) {}
+void hal_radio_send(const uint8_t *data, size_t len) {}
+
 /* ------------------------------- Flash ----------------------------------- */
 uint32_t hal_flash_size(void) { return 1024u * 1024u; }
 int hal_flash_read(uint32_t addr, uint8_t *buf, size_t len) {
