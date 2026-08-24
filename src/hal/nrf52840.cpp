@@ -363,8 +363,11 @@ void hal_wave_play(int pin, int start_level,
 
 
 /* ------------------------------ Radio (ESB) ---------------------------- */
-/* ------------------------------ Radio (ESB) ---------------------------- */
-/* Enhanced ShockBurst — direct register access, no SoftDevice needed. */
+/* Enhanced ShockBurst — direct register access, no SoftDevice needed.
+ * Packet: [preamble(1)] [addr(3)] [len(1)] [payload(0-32)] [CRC(2)]
+ * The radio listens continuously (SHORTS END->START) so %radio-recv can
+ * poll EVENTS_END; hal_radio_send briefly takes the channel then resumes
+ * listening. */
 
 #define NRF_RADIO_BASE   0x40001000u
 #define R_TASKS_TXEN     0x000u
@@ -374,6 +377,9 @@ void hal_wave_play(int pin, int start_level,
 #define R_EVT_READY      0x100u
 #define R_EVT_END        0x120u
 #define R_EVT_DISABLED   0x128u
+#define R_EVT_CRCOK      0x140u
+#define R_EVT_CRCERR     0x144u
+#define R_SHORTS         0x200u
 #define R_MODE           0x510u
 #define R_POWER          0x514u
 #define R_PACKETPTR      0x51Cu
@@ -395,11 +401,22 @@ static inline void esb_disable(void) {
     while (!(reg_read(NRF_RADIO_BASE + R_EVT_DISABLED) & 1)) {}
 }
 
+/* Put the radio into continuous RX: listens on logical address 0 and, after
+ * each received frame, the END->START shortcut re-arms reception. */
+static void esb_start_rx(void) {
+    esb_disable();
+    reg_write(NRF_RADIO_BASE + R_PACKETPTR, (uint32_t)(uintptr_t)esb_buf);
+    reg_write(NRF_RADIO_BASE + R_SHORTS, (1u << 3)); /* END -> START */
+    reg_write(NRF_RADIO_BASE + R_TASKS_RXEN, 1);
+    while (!(reg_read(NRF_RADIO_BASE + R_EVT_READY) & 1)) {}
+    reg_write(NRF_RADIO_BASE + R_TASKS_START, 1);
+}
+
 int hal_radio_init(void) {
-    reg_write(NRF_RADIO_BASE + R_MODE, 1);
-    reg_write(NRF_RADIO_BASE + R_POWER, 4);
-    reg_write(NRF_RADIO_BASE + R_PCNF0, 8);
-    reg_write(NRF_RADIO_BASE + R_PCNF1, (3 << 16) | 32);
+    reg_write(NRF_RADIO_BASE + R_MODE, 1);        /* 2Mbps proprietary */
+    reg_write(NRF_RADIO_BASE + R_POWER, 4);       /* +4 dBm */
+    reg_write(NRF_RADIO_BASE + R_PCNF0, 8);       /* LFLEN=8 bit length */
+    reg_write(NRF_RADIO_BASE + R_PCNF1, (3 << 16) | 32); /* BALEN=3, MAXLEN=32 */
     reg_write(NRF_RADIO_BASE + R_CRCINIT, 0xFFFF);
     reg_write(NRF_RADIO_BASE + R_CRCPOLY, 0x11021 & 0xFFFF);
     reg_write(NRF_RADIO_BASE + R_CRCCNF, 2);
@@ -408,16 +425,20 @@ int hal_radio_init(void) {
     reg_write(NRF_RADIO_BASE + R_TXADDRESS, 0);
     reg_write(NRF_RADIO_BASE + R_RXADDRESSES, 1);
     reg_write(NRF_RADIO_BASE + R_FREQUENCY, 2);
+    esb_start_rx();
     return 0;
 }
 
-void hal_radio_set_address(const uint8_t *addr) {
-    uint32_t base_addr = ((uint32_t)(uint8_t)addr[1] << 24)
-                       | ((uint32_t)(uint8_t)addr[2] << 16)
-                       | ((uint32_t)(uint8_t)addr[3] << 8)
-                       | (uint32_t)(uint8_t)addr[4];
-    reg_write(NRF_RADIO_BASE + R_BASE0, base_addr);
-    reg_write(NRF_RADIO_BASE + R_PREFIX0, addr[0]);
+void hal_radio_set_address(const uint8_t *addr, size_t addr_len) {
+    if (!addr || addr_len < 4) return;
+    /* addr layout (platform-specific): [prefix, b0, b1, b2, b3] (5 bytes)
+     * or [b0..b3] (4 bytes). Use the last four as the 32-bit base. */
+    uint32_t base = ((uint32_t)addr[addr_len - 4] << 24)
+                  | ((uint32_t)addr[addr_len - 3] << 16)
+                  | ((uint32_t)addr[addr_len - 2] << 8)
+                  | (uint32_t)addr[addr_len - 1];
+    reg_write(NRF_RADIO_BASE + R_BASE0, base);
+    reg_write(NRF_RADIO_BASE + R_PREFIX0, addr_len >= 5 ? addr[0] : 0xE7);
 }
 
 void hal_radio_set_channel(uint8_t ch) {
@@ -435,9 +456,26 @@ int hal_radio_send(const uint8_t *data, size_t len) {
     while (!(reg_read(NRF_RADIO_BASE + R_EVT_READY) & 1)) {}
     reg_write(NRF_RADIO_BASE + R_TASKS_START, 1);
     while (!(reg_read(NRF_RADIO_BASE + R_EVT_END) & 1)) {}
-    esb_disable();
+    esb_start_rx();   /* resume listening */
     return (int)len;
 }
+
+int hal_radio_recv(uint8_t *out, size_t maxlen) {
+    if (reg_read(NRF_RADIO_BASE + R_EVT_END) & 1) {
+        if (reg_read(NRF_RADIO_BASE + R_EVT_CRCERR) & 1) {
+            reg_write(NRF_RADIO_BASE + R_EVT_END, 0);
+            reg_write(NRF_RADIO_BASE + R_EVT_CRCERR, 0);
+            return 0;
+        }
+        uint8_t plen = esb_buf[0];
+        if (plen > maxlen) plen = (uint8_t)maxlen;
+        if (plen) memcpy(out, &esb_buf[1], plen);
+        reg_write(NRF_RADIO_BASE + R_EVT_END, 0);
+        return plen;
+    }
+    return 0;
+}
+
 
 /* ------------------------------- BLE HID -------------------------------- */
 /* SoftDevice-based BLE HID deferred. Stubs for now so the build links;
@@ -445,7 +483,7 @@ int hal_radio_send(const uint8_t *data, size_t len) {
 int hal_ble_init(void) { return -1; }
 void hal_ble_set_name(const char *name) {}
 int hal_ble_connected(void) { return 0; }
-void hal_ble_key_report(uint8_t mods, uint8_t keys[6]) {}
+void hal_ble_key_report(uint8_t mods, const uint8_t keys[6]) {}
 void hal_ble_mouse_report(int8_t dx, int8_t dy, uint8_t btns) {}
 
 /* ------------------------------- Flash ----------------------------------- */

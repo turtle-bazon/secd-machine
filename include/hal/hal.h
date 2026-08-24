@@ -123,12 +123,33 @@ int hal_flash_read(uint32_t addr, uint8_t *buf, size_t len);
 int hal_flash_write(uint32_t addr, const uint8_t *buf, size_t len);
 int hal_flash_erase(uint32_t addr, size_t len);
 
+
 /* System */
 void hal_reset(void);
 void hal_sleep(uint32_t ms);
 
-#endif /* SECD_HAL_H */
+/* Radio (2.4GHz proprietary / ESP-NOW) and BLE HID.
+ * Implemented on nRF52840 (ESB) and ESP32 (ESP-NOW + NimBLE); stubs
+ * elsewhere. `addr` is a byte vector whose layout is platform-specific:
+ *   - nRF52840 ESB: 5 bytes (prefix + 4-byte base)
+ *   - ESP32 ESP-NOW: 6-byte peer MAC
+ * `%radio-recv` is non-blocking: copies the most recent packet into `out`
+ * (up to maxlen) and returns its length, or 0 if nothing is pending. */
+int  hal_radio_init(void);
+void hal_radio_set_address(const uint8_t *addr, size_t addr_len);
+void hal_radio_set_channel(uint8_t ch);
+int  hal_radio_send(const uint8_t *data, size_t len);
+int  hal_radio_recv(uint8_t *out, size_t maxlen);
+void hal_radio_on_receive(void (*cb)(const uint8_t *, size_t));
+
+int  hal_ble_init(void);
+void hal_ble_set_name(const char *name);
+int  hal_ble_connected(void);
+void hal_ble_key_report(uint8_t mods, const uint8_t keys[6]);
+void hal_ble_mouse_report(int8_t dx, int8_t dy, uint8_t btns);
 
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* SECD_HAL_H */

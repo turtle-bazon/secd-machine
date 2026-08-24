@@ -119,6 +119,14 @@
         "%ble-mouse": {
             "id": 37,
             "args": 3
+        },
+        "%radio-recv": {
+            "id": 38,
+            "args": 0
+        },
+        "%radio-set-channel": {
+            "id": 39,
+            "args": 1
         }
     },
     "usb": {

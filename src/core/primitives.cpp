@@ -21,17 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Radio / BLE HAL interface */
-int hal_radio_init(void);
-void hal_radio_set_address(const uint8_t *addr);
-void hal_radio_set_channel(uint8_t ch);
-int hal_radio_send(const uint8_t *data, size_t len);
-void hal_radio_on_receive(void (*cb)(const uint8_t *, size_t));
-int hal_ble_init(void);
-void hal_ble_set_name(const char *name);
-int hal_ble_connected(void);
-void hal_ble_key_report(uint8_t mods, uint8_t keys[6]);
-void hal_ble_mouse_report(int8_t dx, int8_t dy, uint8_t btns);
+/* Radio / BLE HAL interface is provided by hal/hal.h (included above). */
 
 /*
  * Primitive operations implementation.
@@ -1002,8 +992,9 @@ secd_value_t prim_wave_play(secd_heap_t *heap, secd_value_t args) {
 
 
 /* --------------------------- Radio / BLE HID ---------------------------- */
-/* Generic 2.4GHz radio for split halves and BLE HID for PC connection.
- * Stub implementations on most platforms; nRF52840 gets real ones. */
+/* Generic 2.4GHz radio (point-to-point / broadcast packets) and BLE HID
+ * for PC connection. Stub implementations on most platforms; nRF52840
+ * (ESB) and ESP32 (ESP-NOW + NimBLE) get real ones. */
 
 secd_value_t prim_radio_init(secd_heap_t *heap, secd_value_t args) {
     (void)heap; (void)args;
@@ -1019,10 +1010,28 @@ secd_value_t prim_radio_send(secd_heap_t *heap, secd_value_t args) {
 }
 
 secd_value_t prim_radio_address(secd_heap_t *heap, secd_value_t args) {
-    uint32_t addr = (uint32_t)(uint16_t)secd_get_index(get_arg1(heap, args));
-    uint8_t bytes[4] = {(uint8_t)(addr >> 24), (uint8_t)(addr >> 16),
-                        (uint8_t)(addr >> 8), (uint8_t)addr};
-    hal_radio_set_address(bytes);
+    secd_value_t sv = get_arg1(heap, args);
+    if (!secd_is_bytevec(sv)) return SECD_NIL;
+    secd_bytevec_t *bv = secd_bytevec_get(heap, secd_get_index(sv));
+    if (!bv || bv->len == 0) return SECD_NIL;
+    hal_radio_set_address(bv->data, bv->len);
+    return SECD_NIL;
+}
+
+secd_value_t prim_radio_recv(secd_heap_t *heap, secd_value_t args) {
+    (void)args;
+    uint8_t buf[32];
+    int len = hal_radio_recv(buf, sizeof(buf));
+    if (len <= 0) return SECD_NIL;
+    uint16_t slot = secd_bytevec_alloc(heap, (uint16_t)len);
+    secd_bytevec_t *out = secd_bytevec_get(heap, slot);
+    if (out) memcpy((void *)out->data, buf, len);
+    return secd_make_bytevec(slot);
+}
+
+secd_value_t prim_radio_set_channel(secd_heap_t *heap, secd_value_t args) {
+    int16_t ch = secd_fixnum_value(get_arg1(heap, args));
+    hal_radio_set_channel((uint8_t)ch);
     return SECD_NIL;
 }
 
@@ -1032,7 +1041,6 @@ secd_value_t prim_ble_init(secd_heap_t *heap, secd_value_t args) {
 }
 
 secd_value_t prim_ble_name(secd_heap_t *heap, secd_value_t args) {
-    /* Takes a string byte-vector, sets BLE device name */
     secd_value_t sv = get_arg1(heap, args);
     if (!secd_is_bytevec(sv)) return SECD_NIL;
     secd_bytevec_t *bv = secd_bytevec_get(heap, secd_get_index(sv));
@@ -1047,9 +1055,15 @@ secd_value_t prim_ble_name(secd_heap_t *heap, secd_value_t args) {
 
 secd_value_t prim_ble_key(secd_heap_t *heap, secd_value_t args) {
     int16_t mods = secd_fixnum_value(get_arg1(heap, args));
-    int16_t usage = secd_fixnum_value(get_arg2(heap, args));
+    secd_value_t kv = get_arg2(heap, args);
     uint8_t keys[6] = {0};
-    keys[0] = (uint8_t)usage;
+    if (secd_is_bytevec(kv)) {
+        secd_bytevec_t *bv = secd_bytevec_get(heap, secd_get_index(kv));
+        if (bv) {
+            size_t n = bv->len < 6 ? bv->len : 6;
+            memcpy(keys, bv->data, n);
+        }
+    }
     hal_ble_key_report((uint8_t)mods, keys);
     return SECD_NIL;
 }
@@ -1282,6 +1296,8 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
     secd_register_prim(registry, "%radio-init", prim_radio_init);
     secd_register_prim(registry, "%radio-send", prim_radio_send);
     secd_register_prim(registry, "%radio-address", prim_radio_address);
+    secd_register_prim(registry, "%radio-recv", prim_radio_recv);
+    secd_register_prim(registry, "%radio-set-channel", prim_radio_set_channel);
     secd_register_prim(registry, "%ble-init", prim_ble_init);
     secd_register_prim(registry, "%ble-name", prim_ble_name);
     secd_register_prim(registry, "%ble-key", prim_ble_key);

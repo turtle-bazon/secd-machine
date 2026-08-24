@@ -326,8 +326,14 @@ void hal_wave_play(int pin, int start_level, const uint16_t *duration_ns, int co
 static bool s_espnow_ready = false;
 static uint8_t s_peer_mac[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 static void (*s_radio_rx_cb)(const uint8_t *, size_t) = NULL;
+static uint8_t s_rx_pending[250];
+static size_t s_rx_pending_len = 0;
 
 static void espnow_recv_cb(const esp_now_recv_info *info, const uint8_t *data, int len) {
+    if (data && len > 0 && (size_t)len <= sizeof(s_rx_pending)) {
+        memcpy(s_rx_pending, data, len);
+        s_rx_pending_len = (size_t)len;
+    }
     if (s_radio_rx_cb && data && len > 0)
         s_radio_rx_cb(data, len);
 }
@@ -349,8 +355,9 @@ int hal_radio_init(void) {
     return 0;
 }
 
-void hal_radio_set_address(const uint8_t *addr) {
-    memcpy(s_peer_mac, addr, 6);
+void hal_radio_set_address(const uint8_t *addr, size_t addr_len) {
+    size_t n = addr_len < 6 ? addr_len : 6;
+    memcpy(s_peer_mac, addr, n);
     if (!s_espnow_ready) return;
     esp_now_del_peer(s_peer_mac);
     esp_now_peer_info_t peer = {};
@@ -373,11 +380,20 @@ void hal_radio_on_receive(void (*cb)(const uint8_t *, size_t)) {
     s_radio_rx_cb = cb;
 }
 
+int hal_radio_recv(uint8_t *out, size_t maxlen) {
+    if (s_rx_pending_len == 0) return 0;
+    size_t n = s_rx_pending_len < maxlen ? s_rx_pending_len : maxlen;
+    memcpy(out, s_rx_pending, n);
+    s_rx_pending_len = 0;
+    return (int)n;
+}
+
 #else /* !SECD_HAS_ESP_NOW */
 int hal_radio_init(void) { return -1; }
-void hal_radio_set_address(const uint8_t *addr) {}
+void hal_radio_set_address(const uint8_t *addr, size_t addr_len) { (void)addr; (void)addr_len; }
 void hal_radio_set_channel(uint8_t ch) {}
 int hal_radio_send(const uint8_t *data, size_t len) { return -1; }
+int hal_radio_recv(uint8_t *out, size_t maxlen) { (void)out; (void)maxlen; return 0; }
 void hal_radio_on_receive(void (*cb)(const uint8_t *, size_t)) {}
 #endif /* SECD_HAS_ESP_NOW */
 
@@ -526,7 +542,7 @@ int hal_ble_connected(void) {
     return s_hid_conn != BLE_HS_CONN_HANDLE_NONE ? 1 : 0;
 }
 
-void hal_ble_key_report(uint8_t mods, uint8_t keys[6]) {
+void hal_ble_key_report(uint8_t mods, const uint8_t keys[6]) {
     s_key_report[0] = mods;
     memcpy(&s_key_report[2], keys, 6);
     if (hal_ble_connected()) {
@@ -546,6 +562,6 @@ void hal_ble_mouse_report(int8_t dx, int8_t dy, uint8_t btns) {
 int hal_ble_init(void) { return -1; }
 void hal_ble_set_name(const char *name) {}
 int hal_ble_connected(void) { return 0; }
-void hal_ble_key_report(uint8_t mods, uint8_t keys[6]) {}
+void hal_ble_key_report(uint8_t mods, const uint8_t keys[6]) {}
 void hal_ble_mouse_report(int8_t dx, int8_t dy, uint8_t btns) {}
 #endif

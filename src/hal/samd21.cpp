@@ -400,13 +400,14 @@ void hal_wave_play(int pin, int start_level, const uint16_t *duration_ns, int co
 
 /* Radio / BLE stubs — implemented on nRF52840 (SoftDevice) */
 int hal_radio_init(void) { return -1; }
-void hal_radio_set_address(const uint8_t *addr) {}
+void hal_radio_set_address(const uint8_t *addr, size_t addr_len) { (void)addr; (void)addr_len; }
 void hal_radio_set_channel(uint8_t ch) {}
+int hal_radio_recv(uint8_t *out, size_t maxlen) { (void)out; (void)maxlen; return 0; }
 int hal_radio_send(const uint8_t *data, size_t len) { return -1; }
 void hal_radio_on_receive(void (*cb)(const uint8_t *, size_t)) {}
 int hal_ble_init(void) { return -1; }
 void hal_ble_set_name(const char *name) {}
 int hal_ble_connected(void) { return 0; }
-void hal_ble_key_report(uint8_t mods, uint8_t keys[6]) {}
+void hal_ble_key_report(uint8_t mods, const uint8_t keys[6]) { (void)mods; (void)keys; }
 void hal_ble_mouse_report(int8_t dx, int8_t dy, uint8_t btns) {}
 
