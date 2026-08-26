@@ -17,17 +17,78 @@
         "max_list_depth": 64
     },
     "capabilities": [
-        "gpio",
-        "uart",
-        "i2c",
-        "spi",
         "adc",
-        "pwm",
-        "timer",
         "ble",
+        "gpio",
+        "hid",
+        "i2c",
+        "pwm",
+        "spi",
+        "timer",
+        "uart",
         "usb"
     ],
     "primitives": {
+        "car": {
+            "id": 0,
+            "args": 0
+        },
+        "cdr": {
+            "id": 1,
+            "args": 0
+        },
+        "cons": {
+            "id": 2,
+            "args": 0
+        },
+        "list": {
+            "id": 3,
+            "args": 0
+        },
+        "+": {
+            "id": 4,
+            "args": 0
+        },
+        "-": {
+            "id": 5,
+            "args": 0
+        },
+        "*": {
+            "id": 6,
+            "args": 0
+        },
+        "/": {
+            "id": 7,
+            "args": 0
+        },
+        "%": {
+            "id": 8,
+            "args": 0
+        },
+        "=": {
+            "id": 9,
+            "args": 0
+        },
+        "<": {
+            "id": 10,
+            "args": 0
+        },
+        ">": {
+            "id": 11,
+            "args": 0
+        },
+        "null?": {
+            "id": 12,
+            "args": 0
+        },
+        "pair?": {
+            "id": 13,
+            "args": 0
+        },
+        "atom?": {
+            "id": 14,
+            "args": 0
+        },
         "%gpio-init": {
             "id": 15,
             "args": 2
@@ -88,45 +149,145 @@
             "id": 29,
             "args": 4
         },
-        "%i2c-write-v": {
+        "%hid-key": {
             "id": 30,
-            "args": 3
-        },
-        "%radio-init": {
-            "id": 31,
             "args": 2
         },
-        "%radio-send": {
+        "%usb-init": {
+            "id": 31,
+            "args": 0
+        },
+        "%usb-start": {
             "id": 32,
-            "args": 1
+            "args": 0
         },
-        "%radio-address": {
+        "%usb-serial-add": {
             "id": 33,
-            "args": 1
+            "args": 0
         },
-        "%ble-init": {
+        "%usb-hid-add": {
             "id": 34,
             "args": 0
         },
-        "%ble-name": {
+        "%serial-write": {
             "id": 35,
-            "args": 1
-        },
-        "%ble-key": {
-            "id": 36,
             "args": 2
         },
-        "%ble-mouse": {
+        "%serial-read": {
+            "id": 36,
+            "args": 1
+        },
+        "%serial-avail": {
             "id": 37,
+            "args": 1
+        },
+        "%i2c-write-v": {
+            "id": 38,
             "args": 3
         },
+        "%hid-mouse": {
+            "id": 39,
+            "args": 0
+        },
+        "%usb-mouse-add": {
+            "id": 40,
+            "args": 0
+        },
+        "%usb-vid": {
+            "id": 41,
+            "args": 1
+        },
+        "%usb-pid": {
+            "id": 42,
+            "args": 1
+        },
+        "%usb-manufacturer": {
+            "id": 43,
+            "args": 1
+        },
+        "%usb-product": {
+            "id": 44,
+            "args": 1
+        },
+        "%usb-serial": {
+            "id": 45,
+            "args": 1
+        },
+        "%bn-add": {
+            "id": 46,
+            "args": 2
+        },
+        "%bn-sub": {
+            "id": 47,
+            "args": 2
+        },
+        "%bn-mul": {
+            "id": 48,
+            "args": 2
+        },
+        "%bn-div": {
+            "id": 49,
+            "args": 2
+        },
+        "%bn-mod": {
+            "id": 50,
+            "args": 2
+        },
+        "%bn-cmp": {
+            "id": 51,
+            "args": 2
+        },
+        "%bn-to-string": {
+            "id": 52,
+            "args": 1
+        },
+        "%bn-from-string": {
+            "id": 53,
+            "args": 1
+        },
+        "%radio-init": {
+            "id": 54,
+            "args": 2
+        },
+        "%radio-send": {
+            "id": 55,
+            "args": 1
+        },
+        "%radio-address": {
+            "id": 56,
+            "args": 1
+        },
         "%radio-recv": {
-            "id": 38,
+            "id": 57,
             "args": 0
         },
         "%radio-set-channel": {
-            "id": 39,
+            "id": 58,
             "args": 1
+        },
+        "%ble-init": {
+            "id": 59,
+            "args": 0
+        },
+        "%ble-name": {
+            "id": 60,
+            "args": 1
+        },
+        "%ble-key": {
+            "id": 61,
+            "args": 2
+        },
+        "%ble-mouse": {
+            "id": 62,
+            "args": 3
+        },
+        "utf16-enc": {
+            "id": 200,
+            "args": 0
+        },
+        "utf16-dec": {
+            "id": 201,
+            "args": 0
         }
     },
     "usb": {

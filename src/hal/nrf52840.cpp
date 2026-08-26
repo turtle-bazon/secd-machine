@@ -545,3 +545,55 @@ void hal_reset(void) {
     reg_write(SCB_AIRCR, (0x5FAu << 16) | (1u << 2));
     for (;;) {}
 }
+
+/* --------------------------- USB / HID --------------------------------- */
+/* The USB device stack (CherryUSB composite CDC + HID) lives in
+ * platforms/nrf52840/usb.cpp as secd_usb_*. These are the HAL bindings the
+ * core primitives call. Only compiled when HID is enabled (the firmware is
+ * built with -DSECD_FEATURE_HID=1 for boards that expose USB). */
+#if SECD_FEATURE_HID
+extern "C" {
+void secd_usb_init(void);
+void secd_usb_start(void);
+int  secd_usb_hid_add(void);
+int  secd_usb_serial_add(void);
+void secd_hid_keyboard_tap(uint8_t modifier, uint8_t usage);
+int  secd_usb_mouse_add(void);
+void secd_usb_set_vid(uint16_t vid);
+void secd_usb_set_pid(uint16_t pid);
+void secd_usb_set_manufacturer(const uint8_t *data, uint16_t len);
+void secd_usb_set_product(const uint8_t *data, uint16_t len);
+void secd_usb_set_serial(const uint8_t *data, uint16_t len);
+int  secd_serial_write(int port, const uint8_t *data, size_t len);
+int  secd_serial_read(int port);
+int  secd_serial_available(int port);
+}
+
+void hal_usb_init(void) { secd_usb_init(); }
+void hal_usb_start(void) { secd_usb_start(); }
+int  hal_usb_serial_add(void) { return secd_usb_serial_add(); }
+int  hal_usb_hid_add(void) { return secd_usb_hid_add(); }
+int  hal_usb_mouse_add(void) { return secd_usb_mouse_add(); }
+void hal_hid_keyboard_tap(uint8_t modifier, uint8_t usage) {
+    secd_hid_keyboard_tap(modifier, usage);
+}
+int  hal_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel) {
+    (void)dx; (void)dy; (void)buttons; (void)wheel; return -1;
+}
+void hal_usb_set_vid(uint16_t vid) { secd_usb_set_vid(vid); }
+void hal_usb_set_pid(uint16_t pid) { secd_usb_set_pid(pid); }
+void hal_usb_set_manufacturer(const uint8_t *data, uint16_t len) {
+    secd_usb_set_manufacturer(data, len);
+}
+void hal_usb_set_product(const uint8_t *data, uint16_t len) {
+    secd_usb_set_product(data, len);
+}
+void hal_usb_set_serial(const uint8_t *data, uint16_t len) {
+    secd_usb_set_serial(data, len);
+}
+int  hal_usb_serial_write(int port, uint8_t byte) {
+    return secd_serial_write(port, &byte, 1);
+}
+int  hal_usb_serial_read(int port) { return secd_serial_read(port); }
+int  hal_usb_serial_available(int port) { return secd_serial_available(port); }
+#endif

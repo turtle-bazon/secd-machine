@@ -293,6 +293,12 @@ static void enable_usbd_irq(void)
 /* ===================================================================== */
 void secd_usb_init(void)
 {
+    /* Allow re-composition: when a Lisp program calls %usb-init after the
+     * firmware already brought up the boot console, tear the device down and
+     * start fresh so %usb-hid-add / %usb-start can add HID and re-enumerate.
+     * (The firmware no longer de-inits the console itself.) */
+    if (s_started)
+        secd_usb_deinit();
     s_cdc_count = 1;
     s_hid_count = 0;
     s_started = false;

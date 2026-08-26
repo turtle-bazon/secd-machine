@@ -117,6 +117,7 @@ NRF52840_CORE_SRCS = platforms/nrf52840/main.cpp platforms/nrf52840/startup_nrf5
 
 NRF52840_CFLAGS = -mcpu=cortex-m4 -mthumb -Os -ffunction-sections -fdata-sections \
 	-Wall -Wextra -Iinclude -DSECD_FEATURE_GPIO=1 -DSECD_FEATURE_UART=1 -DSECD_FEATURE_I2C=1 \
+	-DSECD_FEATURE_HID=1 \
 	-DSECD_MACHINE_VERSION='"0.0.1.0"' -DSECD_PLATFORM_NAME='"nRF52840 SuperMini"' \
 	-DSECD_HEAP_OBJECTS=4096 -DSECD_FEATURES_STR='"gpio,uart,i2c"' -DSECD_DEBUG_BUILD=1 \
 	-Iplatforms/nrf52840 \
@@ -661,6 +662,17 @@ esp32s3-blink: $(OUTPUT_DIR)/stamp-s3a.machine
 
 esp32s3-cardputer: $(OUTPUT_DIR)/stamp-s3a.machine
 	$(call ESP32-LINK,stamp-s3a,$(SECD_LISP_DIR)/examples/cardputer-input.lisp,CARDPUTER-INPUT:MAIN,/tmp/stamp-s3a-cardputer)
+
+# --- nRF52840 example firmware (Lisp glued into the UF2 app image) -------
+# Builds the firmware .machine first, then compiles each example with
+# secd-lisp and links it with the firmware to a flashable UF2. The bundled
+# linker extracts the firmware from the .machine, appends the bytecode past
+# the app image end (where load_bytecode scans for it), and re-wraps as UF2.
+nrf-examples: nrf52840-promicro
+	$(SECD_LISP_DIR)/build/secd-lisp $(SECD_LISP_DIR)/examples/usb-keyboard.lisp -t nrf52840-promicro --entry "USB-KEYBOARD:MAIN" -o $(OUTPUT_DIR)/usb-keyboard-nrf52840.uf2
+	$(SECD_LISP_DIR)/build/secd-lisp $(SECD_LISP_DIR)/examples/portable-blink.lisp -t nrf52840-promicro --entry "PORTABLE-BLINK:MAIN" -o $(OUTPUT_DIR)/portable-blink-nrf52840.uf2
+
+.PHONY: nrf-examples
 
 clean:
 	rm -f $(OBJS) $(TEST_OBJS) $(LIB) run_tests
