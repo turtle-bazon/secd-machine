@@ -754,7 +754,7 @@ int secd_execute(secd_machine_t *machine, const uint8_t *bytecode, size_t length
                 } else {
                     hal_print("<object>");
                 }
-                hal_print("\n");
+                hal_print("\r\n");
                 if (secd_push(machine, val) != 0) {
                     return -1;
                 }

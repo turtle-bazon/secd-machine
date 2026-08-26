@@ -376,9 +376,9 @@ void hal_print(const char *str) {
     if (str) secd_console_write((const uint8_t *)str, strlen(str));
 }
 void hal_println(const char *str) {
-    hal_print(str); uart_put("\n");
-    static const uint8_t nl[1] = { '\n' };
-    secd_console_write(nl, 1);
+    hal_print(str); uart_put("\r\n");
+    static const uint8_t nl[2] = { '\r', '\n' };
+    secd_console_write(nl, 2);
 }
 void hal_print_int(int32_t value) {
     char buf[12]; int i = 0;

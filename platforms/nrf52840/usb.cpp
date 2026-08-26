@@ -59,7 +59,7 @@ static bool     s_configured = false;
 /* ---------------- console RX rings (per CDC port) ---------------- */
 static volatile uint16_t cdc_rx_head[MAX_CDC], cdc_rx_tail[MAX_CDC];
 static uint8_t cdc_rx_ring[MAX_CDC][RING_SIZE];
-static uint8_t cdc_rx_dma[MAX_CDC][CDC_OUT_MPS];   /* OUT read buffer */
+static uint8_t cdc_rx_dma[MAX_CDC][CDC_OUT_MPS] __attribute__((aligned(4)));   /* OUT read buffer */
 static bool    cdc_in_busy[MAX_CDC];
 
 /* ---------------- console TX buffers (per CDC port) ----------------
@@ -280,7 +280,7 @@ static void secd_usbd_event_handler(uint8_t busid, uint8_t event)
         cdc_dtr[intf >> 1] = dtr;
 }
 
-/* ---------------- NVIC enable (TinyUSB's tud_init did this) ---------------- */
+/* ---------------- NVIC enable/disable (TinyUSB's tud_init did this) ---------------- */
 #define USBD_IRQn 39
 static void enable_usbd_irq(void)
 {
@@ -288,6 +288,11 @@ static void enable_usbd_irq(void)
     ipr[USBD_IRQn] = 0x20;   /* preempt priority 2 */
     volatile uint32_t *iser = (volatile uint32_t *)0xE000E100;
     iser[USBD_IRQn >> 5] |= (1u << (USBD_IRQn & 0x1F));
+}
+static void disable_usbd_irq(void)
+{
+    volatile uint32_t *icer = (volatile uint32_t *)0xE000E180;
+    icer[USBD_IRQn >> 5] = (1u << (USBD_IRQn & 0x1F));
 }
 
 /* ===================================================================== */
@@ -384,17 +389,23 @@ void secd_usb_start(void)
         usbd_add_endpoint(0, &hid_in_ep[h]);
     }
 
+    /* Init CherryUSB core + DC while USBD peripheral is still off.
+     * usb_dc_init() zeroes endpoint state and sets INTEN — this must happen
+     * before the peripheral is enabled so we don't corrupt a mid-flight
+     * enumeration triggered by the pull-up. */
     usbd_initialize(0, 0, secd_usbd_event_handler);
 
-    /* connect: replace what TinyUSB's tud_init did (pre_init/post_init are empty stubs).
-     * First force a CLEAN USB disconnect (pull-up off + peripheral disable) and hold it
+    /* Force a CLEAN USB disconnect (pull-up off + peripheral disable) and hold it
      * for a few tens of ms, so the host reliably detects a disconnect and re-enumerates
      * after any kind of reset (BMP soft-reset, bootloader->app jump, brown-out). Without
-     * this the D+ line can stay high and Linux keeps talking to a dead device address. */
+     * this the D+ line can stay high and Linux keeps talking to a dead device address.
+     *
+     * HFCLK is started and waited for INSIDE the DETECTED handler so USBD has a
+     * stable clock when it activates — this is the fix for intermittent boot failures. */
     NRF_USBD->USBPULLUP = 0;
     NRF_USBD->ENABLE = 0;
     for (volatile uint32_t i = 0; i < 3000000; i++) { /* ~50ms @ 64MHz */ }
-    cherry_usb_hal_nrf_power_event(0);  /* DETECTED -> enable USBD + HFCLK */
+    cherry_usb_hal_nrf_power_event(0);  /* DETECTED -> start HFCLK, enable USBD */
     cherry_usb_hal_nrf_power_event(2);  /* READY    -> wait EVENTCAUSE, set pull-up */
     enable_usbd_irq();
 }
@@ -402,6 +413,8 @@ void secd_usb_start(void)
 void secd_usb_deinit(void)
 {
     if (!s_started) return;
+    disable_usbd_irq();         /* stop ISR before tearing down state */
+    for (volatile uint32_t i = 0; i < 100000; i++) {}  /* ~1.5ms let any in-flight ISR finish */
     usbd_deinitialize(0);
     s_started = false;
     s_configured = false;

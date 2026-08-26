@@ -1226,13 +1226,23 @@ void cherry_usb_hal_nrf_power_event(uint32_t event)
       }
 #endif
 
+      /*!< Enable HFCLK FIRST — USBD needs a stable 48 MHz clock before
+       *  it can reach the active state.  Starting HFCLK before ENABLE
+       *  avoids a race where USBD activates before the oscillator is ready,
+       *  which is a common cause of intermittent enumeration failures. */
+      hfclk_enable();
+      {
+        volatile uint32_t hfclk_timeout = 6400000u;  /* ~100 ms @ 64 MHz */
+        while (!hfclk_running())
+        {
+          if (--hfclk_timeout == 0) break;
+        }
+      }
+
       /*!< Enable the peripheral (will cause Ready event) */
       NRF_USBD->ENABLE = 1;
       __ISB();
       __DSB();
-
-      /*!< Enable HFCLK */
-      hfclk_enable();
     }
     break;
 
@@ -1244,9 +1254,13 @@ void cherry_usb_hal_nrf_power_event(uint32_t event)
     if (NRF_USBD->USBPULLUP && hfclk_running())
       break;
 
-    /*!< Waiting for USBD peripheral enabled */
-    while (!(USBD_EVENTCAUSE_READY_Msk & NRF_USBD->EVENTCAUSE))
+    /*!< Waiting for USBD peripheral enabled (with timeout ~100ms at 64MHz) */
     {
+      volatile uint32_t ready_timeout = 6400000u;
+      while (!(USBD_EVENTCAUSE_READY_Msk & NRF_USBD->EVENTCAUSE))
+      {
+        if (--ready_timeout == 0) break;
+      }
     }
 
     NRF_USBD->EVENTCAUSE = USBD_EVENTCAUSE_READY_Msk;
@@ -1306,9 +1320,13 @@ void cherry_usb_hal_nrf_power_event(uint32_t event)
      * Interrupt will be enabled by tud_init(), when USB stack is ready
      * to handle interrupts.
      */
-    /*!< Wait for HFCLK */
-    while (!hfclk_running())
+    /*!< Wait for HFCLK (with timeout ~100ms at 64MHz) */
     {
+      volatile uint32_t hfclk_timeout = 6400000u;
+      while (!hfclk_running())
+      {
+        if (--hfclk_timeout == 0) break;
+      }
     }
 
     /*!< Enable pull up */

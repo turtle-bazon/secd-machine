@@ -33,53 +33,10 @@
 
 extern "C" char __flash_binary_end[];
 
-/* USB ISR diagnostic counters (defined in usb_dc_nrf52840.c). */
-
 static secd_heap_t heap;
 static secd_machine_t machine;
 
-/* ---------------------------------------------------------------------
- * DIAGNOSTIC LED SCHEME (P0.15, nice!nano blue) - FINAL
- *
- * Unit blink : 250 ms on / 250 ms off.   Pause after each event: ~1.5 s dark.
- * Group A (system):      1 boot, 2 hal_init, 3 usb_registered.
- * Group B (USB hw):      counter restarts -
- *   1 USBD_READY, 2 pullup_connected, 3 init_returned,
- *   4 usb_start_done, 5 banner/VM.  Then solid ON = healthy idle loop.
- * Error bursts (fast 60 ms, USB aborted): 2 = HFXO fail, 3 = no READY,
- * 4 = no VBUS.  Continuous strobing = CPU fault.
- * ------------------------------------------------------------------- */
-#define DIAG_BLINK_ITERS 2500000u
-#define DIAG_GAP_ITERS  15000000u
-
-static void hb_pin(uint32_t pin, int cycles) {
-    uint32_t port_base = (pin < 32) ? 0x50000000u : 0x50000300u;
-    uint32_t idx = pin & 31u;
-    *(volatile uint32_t *)(port_base + 0x700u + idx * 4u) = 0x00000003u; /* out */
-    *(volatile uint32_t *)(port_base + 0x518u) = (1u << idx);           /* DIRSET */
-    for (int i = 0; i < cycles; i++) {
-        *(volatile uint32_t *)(port_base + 0x508u) = (1u << idx);       /* OUTSET */
-        for (volatile uint32_t d = 0; d < DIAG_BLINK_ITERS; d++) {}
-        *(volatile uint32_t *)(port_base + 0x50Cu) = (1u << idx);       /* OUTCLR */
-        for (volatile uint32_t d = 0; d < DIAG_BLINK_ITERS; d++) {}
-    }
-    *(volatile uint32_t *)(port_base + 0x50Cu) = (1u << idx);
-}
-
-static void hb_gap(void) {
-    for (volatile uint32_t d = 0; d < DIAG_GAP_ITERS; d++) {}
-}
-
-static void diag_heartbeat(void) {
-    /* Single-board build: nice!nano's blue LED is P0.15. */
-    hb_pin(15u, 1);
-    hb_gap();
-}
-
-/* Runtime USB state LED: the nice!nano blue LED on P0.15 (pin 15).
- *   off        -> USB not configured
- *   fast blink -> configured, banner not yet delivered (host not open / TX stall)
- *   solid on   -> banner delivered (healthy idle) */
+/* LED: nice!nano blue on P0.15. */
 static void led_cfg(void) {
     uint32_t pins[1] = { 15u };
     for (int k = 0; k < 1; k++) {
@@ -99,23 +56,6 @@ static void led_set(int on) {
         if (on) *(volatile uint32_t *)(port_base + 0x508u) = (1u << idx);
         else    *(volatile uint32_t *)(port_base + 0x50Cu) = (1u << idx);
     }
-}
-static void led_blink(int n) {
-    for (int i = 0; i < n; i++) {
-        led_set(1);
-        for (volatile uint32_t d = 0; d < DIAG_BLINK_ITERS; d++) {}
-        led_set(0);
-        for (volatile uint32_t d = 0; d < DIAG_BLINK_ITERS; d++) {}
-    }
-}
-
-/* Milestone marker: blink P0.15 `n` times so a single flash run tells us
- * the last stage reached before a crash/reset:
- *   1 = boot | 5 = hal_init | 6 = usb_init | 7 = usb_start
- *   8 = boot banner reached (main loop) */
-static void diag_milestone(int n) {
-    hb_pin(15u, n);
-    hb_gap();
 }
 
 #if SECD_DEBUG_BUILD
@@ -141,7 +81,7 @@ static int load_bytecode(secd_machine_t *m, secd_heap_t *h) {
     }
 
     if (ptr == NULL) {
-        SECD_INFO("No bytecode found\n");
+        SECD_INFO("No bytecode found\r\n");
         return -1;
     }
 
@@ -152,7 +92,7 @@ static int load_bytecode(secd_machine_t *m, secd_heap_t *h) {
     hal_print_int(code_size);
     SECD_INFO(" const=");
     hal_print_int(const_size);
-    SECD_INFO("\n");
+    SECD_INFO("\r\n");
 
     secd_execute(m, ptr + 14, (size_t)code_size + (size_t)const_size);
     return 0;
@@ -162,29 +102,17 @@ int main(void) {
     led_cfg();
 
     secd_hal_init();
-    SECD_INFO("[M] hal_init ok\n");
 
-    /* Bring up USB CDC so the host can observe boot and we get a console.
-     * The composite device (CDC console + optional HID) is built by Lisp
-     * via secd_usb_init/serial_add/hid_add/%usb-start; here we just register
-     * the console and enumerate, which is enough for the debug banner. */
     secd_usb_init();
-    SECD_INFO("[M] usb_init ok\n");
     secd_usb_start();
-    SECD_INFO("[M] usb_start ok\n");
 
     /* Wait for the host to open the CDC port (DTR) so the verbose boot log
-     * is actually delivered. A prime fired on the exact DTR edge is dropped
-     * on nRF (the same pre-read loss as a pre-open write), so settle ~250ms
-     * after ready before emitting. The shared boot then prints the identical
-     * banner/log every other target gets.
-     * Bound the wait: if no console ever appears (host closed, bad cable),
-     * run the glued program anyway -- degraded output beats a dead device. */
+     * is actually delivered. */
     uint32_t console_wait_ms = 0;
     while (!secd_console_ready()) {
         secd_usb_task();
         hal_delay(1);
-        if (++console_wait_ms > 10000u) break;   /* 10 s */
+        if (++console_wait_ms > 10000u) break;
     }
     if (secd_console_ready())
         hal_delay(250);
