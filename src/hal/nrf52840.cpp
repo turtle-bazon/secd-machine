@@ -3,7 +3,7 @@
  * Copyright (C) 2026  License: GPL3
  *
  * Bare-metal HAL for Nordic nRF52840 (Cortex-M4F @64MHz). No vendor SDK.
- * Clock: internal RC HFINT 64MHz (no crystal needed for basic operation).
+ * Clock: CPU from HFINT 64MHz; HFCLK requested from HFXO (required by USBD).
  * SysTick drives the 1ms tick.
  *
  * Pin encoding: port*32 + pin → P0.0..P0.31 = 0..31, P1.0..P1.15 = 32..47.
@@ -45,7 +45,10 @@ extern "C" size_t secd_console_write(const uint8_t *data, size_t len);
 
 /* CLOCK registers */
 #define CLK_TASKS_HFCLKSTART   (NRF_CLOCK_BASE + 0x000u)
+#define CLK_TASKS_HFCLKSTOP    (NRF_CLOCK_BASE + 0x004u)
 #define CLK_EVENTS_HFCLKSTARTED (NRF_CLOCK_BASE + 0x100u)
+#define CLK_HFCLKSTAT          (NRF_CLOCK_BASE + 0x148u)
+#define CLK_HFCLKSRC           (NRF_CLOCK_BASE + 0x520u)   /* nRF52 only */
 #define CLK_TASKS_LFCLKSTART   (NRF_CLOCK_BASE + 0x008u)
 #define CLK_EVENTS_LFCLKSTARTED (NRF_CLOCK_BASE + 0x104u)
 #define CLK_LFCLKSRC           (NRF_CLOCK_BASE + 0x518u)
@@ -137,11 +140,21 @@ static inline uint32_t reg_read(uint32_t addr) {
 
 /* ------------------------------ Clock --------------------------------- */
 static void clock_init(void) {
-    /* Start high-frequency clock (internal RC, always available) */
+    /* USBD requires HFXO: the USB driver gates on HFCLKSTAT reporting
+     * Running|Xtal, and after a real reset (button/power) HFCLKSRC defaults
+     * to the internal RC.  The source may only be switched while HFCLK is
+     * stopped, so stop-RC -> select Xtal -> start -> wait.  The CPU core
+     * always runs from HFINT regardless; this request serves peripherals. */
+    uint32_t hfstat = reg_read(CLK_HFCLKSTAT);
+    if ((hfstat & 1u) && !(hfstat & (1u << 16))) {   /* running, RC source */
+        reg_write(CLK_TASKS_HFCLKSTOP, 1);
+        while (reg_read(CLK_HFCLKSTAT) & 1u) {}
+    }
+    reg_write(CLK_HFCLKSRC, 1);                      /* Xtal (HFXO) */
+    reg_write(CLK_EVENTS_HFCLKSTARTED, 0);
     reg_write(CLK_TASKS_HFCLKSTART, 1);
     while (!(reg_read(CLK_EVENTS_HFCLKSTARTED) & 1)) {}
 
-    /* 64MHz CPU clock from HFINT (no divider needed) */
     /* SysTick: 1ms tick at 64MHz HCLK */
     reg_write(SYST_RVR, 64000u - 1u);
     reg_write(SYST_CVR, 0);

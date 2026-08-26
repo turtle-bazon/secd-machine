@@ -177,12 +177,17 @@ int main(void) {
      * is actually delivered. A prime fired on the exact DTR edge is dropped
      * on nRF (the same pre-read loss as a pre-open write), so settle ~250ms
      * after ready before emitting. The shared boot then prints the identical
-     * banner/log every other target gets. */
+     * banner/log every other target gets.
+     * Bound the wait: if no console ever appears (host closed, bad cable),
+     * run the glued program anyway -- degraded output beats a dead device. */
+    uint32_t console_wait_ms = 0;
     while (!secd_console_ready()) {
         secd_usb_task();
         hal_delay(1);
+        if (++console_wait_ms > 10000u) break;   /* 10 s */
     }
-    hal_delay(250);
+    if (secd_console_ready())
+        hal_delay(250);
 
     secd_machine_boot(&machine, &heap, SECD_HEAP_OBJECTS, load_bytecode);
 
