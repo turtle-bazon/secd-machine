@@ -76,14 +76,13 @@ static void diag_heartbeat(void) {
     hb_gap();
 }
 
-/* Runtime USB state LED: drive both the nice!nano blue (P0.15) and the board
- * LED (P1.10 / pin 42) so at least one is visible regardless of board variant.
+/* Runtime USB state LED: the nice!nano blue LED on P0.15 (pin 15).
  *   off        -> USB not configured
  *   fast blink -> configured, banner not yet delivered (host not open / TX stall)
  *   solid on   -> banner delivered (healthy idle) */
 static void led_cfg(void) {
-    uint32_t pins[2] = { 15u, 42u };
-    for (int k = 0; k < 2; k++) {
+    uint32_t pins[1] = { 15u };
+    for (int k = 0; k < 1; k++) {
         uint32_t pin = pins[k];
         uint32_t port_base = (pin < 32) ? 0x50000000u : 0x50000300u;
         uint32_t idx = pin & 31u;
@@ -92,8 +91,8 @@ static void led_cfg(void) {
     }
 }
 static void led_set(int on) {
-    uint32_t pins[2] = { 15u, 42u };
-    for (int k = 0; k < 2; k++) {
+    uint32_t pins[1] = { 15u };
+    for (int k = 0; k < 1; k++) {
         uint32_t pin = pins[k];
         uint32_t port_base = (pin < 32) ? 0x50000000u : 0x50000300u;
         uint32_t idx = pin & 31u;

@@ -18,7 +18,7 @@ extern "C" void Default_Handler(void) { HardFault_Handler(); }
 /* HardFault marker: rapid blink on every candidate LED so a crash is
  * distinguishable from a hung-but-alive app.  Direct register GPIO only. */
 extern "C" __attribute__((noreturn)) void HardFault_Handler(void) {
-    const uint32_t pins[] = { 15u, 42u, 27u, 45u };
+    const uint32_t pins[] = { 15u, 27u, 45u };
     for (int p = 0; p < 4; p++) {
         uint32_t base = (pins[p] < 32) ? 0x50000000u : 0x50000300u;
         uint32_t idx = pins[p] & 31u;
