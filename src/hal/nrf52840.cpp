@@ -15,6 +15,11 @@
 #include <string.h>
 #include <stdlib.h>
 
+/* USB CDC console (CherryUSB). Declared here so the debug print path can also
+ * ship output to the host; secd_console_write() returns 0 until the host has
+ * configured the device, so this is a safe no-op before enumeration. */
+extern "C" size_t secd_console_write(const uint8_t *data, size_t len);
+
 #ifndef SECD_FEATURE_GPIO
 #define SECD_FEATURE_GPIO 0
 #endif
@@ -44,22 +49,22 @@
 #define CLK_TASKS_LFCLKSTART   (NRF_CLOCK_BASE + 0x008u)
 #define CLK_EVENTS_LFCLKSTARTED (NRF_CLOCK_BASE + 0x104u)
 #define CLK_LFCLKSRC           (NRF_CLOCK_BASE + 0x518u)
-#define CLK_LFCLKSTAT          (NRF_CLOCK_BASE + 0x512u)
+#define CLK_LFCLKSTAT          (NRF_CLOCK_BASE + 0x414u)
 
 /* UARTE0 */
 #define UARTE_TASKS_STARTRX  (NRF_UARTE0_BASE + 0x000u)
 #define UARTE_TASKS_STOPRX   (NRF_UARTE0_BASE + 0x004u)
 #define UARTE_TASKS_STARTTX  (NRF_UARTE0_BASE + 0x008u)
 #define UARTE_TASKS_STOPTX   (NRF_UARTE0_BASE + 0x00Cu)
-#define UARTE_EVENTS_RXDRDY  (NRF_UARTE0_BASE + 0x108u)
-#define UARTE_EVENTS_TXDRDY  (NRF_UARTE0_BASE + 0x10Cu)
+#define UARTE_EVENTS_RXDRDY  (NRF_UARTE0_BASE + 0x108u)  /* RXDRDY */
+#define UARTE_EVENTS_TXDRDY  (NRF_UARTE0_BASE + 0x11Cu)  /* was 0x10C - WRONG! */
 #define UARTE_SHORTS         (NRF_UARTE0_BASE + 0x104u)
 #define UARTE_INTEN          (NRF_UARTE0_BASE + 0x300u)
 #define UARTE_ENABLE         (NRF_UARTE0_BASE + 0x500u)
-#define UARTE_PSELRTS        (NRF_UARTE0_BASE + 0x508u)
-#define UARTE_PSELTXD        (NRF_UARTE0_BASE + 0x50Cu)
+#define UARTE_PSELRTS        (NRF_UARTE0_BASE + 0x50Cu)
+#define UARTE_PSELTXD        (NRF_UARTE0_BASE + 0x514u)
 #define UARTE_PSELCTS        (NRF_UARTE0_BASE + 0x510u)
-#define UARTE_PSELRXD        (NRF_UARTE0_BASE + 0x514u)
+#define UARTE_PSELRXD        (NRF_UARTE0_BASE + 0x518u)
 #define UARTE_BAUDRATE       (NRF_UARTE0_BASE + 0x524u)
 #define UARTE_RXD_PTR        (NRF_UARTE0_BASE + 0x534u)
 #define UARTE_RXD_MAXCNT     (NRF_UARTE0_BASE + 0x538u)
@@ -141,6 +146,12 @@ static void clock_init(void) {
     reg_write(SYST_RVR, 64000u - 1u);
     reg_write(SYST_CVR, 0);
     reg_write(SYST_CSR, SYST_ENABLE | SYST_TICKINT | SYST_CLKSOURCE);
+
+    /* Diagnostics: SysTick must outrank the USBD IRQ so the wedge-watch
+     * blinker keeps running even if USBD_IRQHandler spins forever.
+     * nRF52 implements only priority bits [7:4]: value 0x20 = level 2. */
+    *(volatile uint8_t *)(0xE000ED23u) = 0x00u;       /* SysTick prio 0 (SHPR3.PRI_15) */
+    *(volatile uint8_t *)(0xE000E400u + 39u) = 0x20u; /* USBD prio 2 */
 }
 
 void secd_hal_init(void) {
@@ -170,13 +181,13 @@ static inline uint32_t gpio_out_reg(int pin) {
 static inline int gpio_pin_idx(int pin) { return pin & 31; }
 
 int hal_gpio_init(uint8_t pin, uint8_t mode) {
-    uint32_t cnf_addr = NRF_GPIO_BASE + 0x700u + ((uint32_t)pin * 4u);
+    uint32_t cnf_addr = gpio_out_reg(pin) + 0x1FCu + (((uint32_t)pin & 31u) * 4u);
     if (mode == HAL_GPIO_OUTPUT) {
         /* Output: dir=Output(1), input buffer=Connect(0), no pull,
            drive=S0S1(0), sense=Disabled(0) */
         reg_write(cnf_addr, GPIO_CNF_DIR_OUT);
         /* Set DIR bit in OUTSET */
-        reg_write(gpio_out_reg(pin) + 0x08u, 1u << gpio_pin_idx(pin)); /* DIRSET */
+        reg_write(gpio_out_reg(pin) + 0x14u, 1u << gpio_pin_idx(pin)); /* DIRSET */
     } else {
         /* Input: dir=Input(0), input buffer=Connect(1), pull-up */
         reg_write(cnf_addr, GPIO_CNF_INPUT_BUF | GPIO_CNF_PULLUP);
@@ -190,12 +201,12 @@ int hal_gpio_write(uint8_t pin, uint8_t value) {
     if (value)
         reg_write(out_reg + 0x04u, bit);  /* OUTSET offset 0x04 from OUT base */
     else
-        reg_write(out_reg + 0x0Cu, bit);  /* OUTCLR offset 0x0C from OUT base */
+        reg_write(out_reg + 0x08u, bit);  /* OUTCLR offset 0x08 from OUT base */
     return 0;
 }
 
 int hal_gpio_read(uint8_t pin) {
-    uint32_t in_reg = gpio_out_reg(pin) - 0x04u; /* IN is OUT-4 = base+0x504-4 */
+    uint32_t in_reg = gpio_out_reg(pin) + 0x0Cu; /* IN at OUT+0x0C (0x510) */
     return (reg_read(in_reg) >> gpio_pin_idx(pin)) & 1u;
 }
 #endif
@@ -203,19 +214,25 @@ int hal_gpio_read(uint8_t pin) {
 /* ------------------------------ Serial -------------------------------- */
 #if SECD_FEATURE_UART
 
-/* Console UART pins: TX=P1.02, RX=P1.03 (SuperMini default) */
-#define CONSOLE_TX_PIN 34  /* P1.02 = port*32+pin = 1*32+2 */
-#define CONSOLE_RX_PIN 35  /* P1.03 */
+/* Console UART pins: Pro-Micro silk TX0/RX1 = P0.06 / P0.08 (nice!nano).
+ * Overridable via -DCONSOLE_TX_PIN / -DCONSOLE_RX_PIN for other boards. */
+#ifndef CONSOLE_TX_PIN
+#define CONSOLE_TX_PIN 6   /* P0.06, silk "TX0" */
+#endif
+#ifndef CONSOLE_RX_PIN
+#define CONSOLE_RX_PIN 8   /* P0.08, silk "RX1" */
+#endif
 
 void hal_serial_init(uint32_t baud) {
     /* Configure TX pin as output, RX pin as input */
-    uint32_t tx_cnf = NRF_GPIO_BASE + 0x700u + ((uint32_t)CONSOLE_TX_PIN * 4u);
-    uint32_t rx_cnf = NRF_GPIO_BASE + 0x700u + ((uint32_t)CONSOLE_RX_PIN * 4u);
+    uint32_t tx_cnf = gpio_out_reg(CONSOLE_TX_PIN) + 0x1FCu + ((CONSOLE_TX_PIN & 31u) * 4u);
+    uint32_t rx_cnf = gpio_out_reg(CONSOLE_RX_PIN) + 0x1FCu + ((CONSOLE_RX_PIN & 31u) * 4u);
     reg_write(tx_cnf, 0x10601u); /* Out, Connect, Pull-up, S0S1 */
     reg_write(rx_cnf, 0x30001u); /* In, Connect, Pull-up, S0S1 */
 
-    reg_write(UARTE_PSELTXD, CONSOLE_TX_PIN | (1u << 31)); /* connect */
-    reg_write(UARTE_PSELRXD, CONSOLE_RX_PIN | (1u << 31));
+    /* PSEL: port in bits 8-11, pin in bits 0-4, bit31 = connect */
+    reg_write(UARTE_PSELTXD, ((uint32_t)(CONSOLE_TX_PIN >> 5) << 8) | (CONSOLE_TX_PIN & 31u) | (1u << 31));
+    reg_write(UARTE_PSELRXD, ((uint32_t)(CONSOLE_RX_PIN >> 5) << 8) | (CONSOLE_RX_PIN & 31u) | (1u << 31));
     reg_write(UARTE_PSELRTS, 0xFFFFFFFFu); /* disconnect RTS */
     reg_write(UARTE_PSELCTS, 0xFFFFFFFFu); /* disconnect CTS */
 
@@ -244,7 +261,10 @@ void hal_serial_write(uint8_t byte) {
     reg_write(UARTE_TXD_MAXCNT, 1);
     reg_write(UARTE_EVENTS_TXDRDY, 0);
     reg_write(UARTE_TASKS_STARTTX, 1);
-    while (!(reg_read(UARTE_EVENTS_TXDRDY) & 1)) {}
+    /* Bounded wait: a dead/broken UART must never wedge the boot. */
+    for (volatile uint32_t t = 0; t < 40000u; t++) {
+        if (reg_read(UARTE_EVENTS_TXDRDY) & 1u) return;
+    }
 }
 
 void hal_serial_write_bytes(const uint8_t *data, size_t len) {
@@ -314,26 +334,49 @@ int hal_i2c_write_read(uint8_t bus, uint8_t addr, const uint8_t *w, size_t wl, u
 
 
 /* ----------------------------- String output ---------------------------- */
-static void uart_put(const char *c) {
+/* Send one CHARACTER (name kept for existing callers). */
+static void uart_put(char c) {
 #if SECD_FEATURE_UART
-    hal_serial_write((uint8_t)*c);
+    hal_serial_write((uint8_t)c);
 #else
     (void)c;
 #endif
 }
 
+/* Raw text logging over the console UART (P1.02, 115200 8N1). */
+extern "C" void __attribute__((weak)) hal_uart_log(const char *s) {
+#if SECD_FEATURE_UART
+    while (*s) uart_put(*s++);
+#else
+    (void)s;
+#endif
+}
+extern "C" void __attribute__((weak)) hal_uart_hex(uint32_t v) {
+    const char hx[] = "0123456789ABCDEF";
+    hal_uart_log("0x");
+    for (int i = 28; i >= 0; i -= 4) uart_put(hx[(v >> i) & 0xFu]);
+}
+
 void hal_print(const char *str) {
-    while (*str) uart_put(str++);
+    const char *s = str;
+    while (*s) uart_put(*s++);
+    if (str) secd_console_write((const uint8_t *)str, strlen(str));
 }
 void hal_println(const char *str) {
     hal_print(str); uart_put("\n");
+    static const uint8_t nl[1] = { '\n' };
+    secd_console_write(nl, 1);
 }
 void hal_print_int(int32_t value) {
     char buf[12]; int i = 0;
-    if (!value) { uart_put("0"); return; }
-    if (value < 0) { uart_put("-"); value = -value; }
+    if (!value) { uart_put("0"); secd_console_write((const uint8_t *)"0", 1); return; }
+    if (value < 0) { uart_put("-"); secd_console_write((const uint8_t *)"-", 1); value = -value; }
     while (value > 0) { buf[i++] = '0' + value % 10; value /= 10; }
-    while (i > 0) { char c[2] = { buf[--i], 0 }; uart_put(c); }
+    while (i > 0) {
+        char c[2] = { buf[--i], 0 };
+        uart_put(c);
+        secd_console_write((const uint8_t *)c, 1);
+    }
 }
 
 /* ------------------------------ Wave player ------------------------------ */

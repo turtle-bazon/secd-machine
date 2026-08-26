@@ -557,3 +557,16 @@ int hal_ble_connected(void) { return 0; }
 void hal_ble_key_report(uint8_t mods, const uint8_t keys[6]) { (void)mods; (void)keys; }
 void hal_ble_mouse_report(int8_t dx, int8_t dy, uint8_t btns) {}
 
+/* Console binding (UART-backed) */
+size_t secd_console_write(const uint8_t *data, size_t len) {
+    hal_serial_write_bytes(data, len);
+    return len;
+}
+void secd_console_write_char(char c) { secd_console_write((const uint8_t *)&c, 1); }
+int secd_console_read(void) {
+    if (hal_serial_available() <= 0) return -1;
+    return (int)hal_serial_read();
+}
+int secd_console_available(void) { return hal_serial_available(); }
+bool secd_console_ready(void) { return true; }
+

@@ -140,5 +140,9 @@
             "device": true
         },
         "note": "nRF52840 native USB device controller supports CDC-ACM and HID classes via Nordic USB stack or CherryUSB."
-    }
+    },
+    "boards": [
+        "nrf52840-promicro",
+        "xiao-nrf52840-ble"
+    ]
 }

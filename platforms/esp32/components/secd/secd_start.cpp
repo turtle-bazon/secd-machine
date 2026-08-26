@@ -16,6 +16,7 @@
  */
 #include "secd/machine.h"
 #include "secd/heap.h"
+#include "secd/boot.h"
 #include "hal/hal.h"
 #include "esp_partition.h"
 #include "esp_ota_ops.h"
@@ -167,9 +168,7 @@ extern "C" int secd_start(void) {
      * re-enumerates).  Let it settle so the startup banner survives. */
     SECD_WAIT_MS(1000);
 
-    SECD_INFO("SECD Machine v%s\n", SECD_MACHINE_VERSION);
-    SECD_INFO("Platform: ESP32-C3\n");
-    SECD_INFO("Features: %s\n", SECD_FEATURES_STR);
+    secd_print_banner();
 
     if (secd_heap_init(&heap, HEAP_OBJECTS) != 0) {
         SECD_INFO("Heap init failed\n");

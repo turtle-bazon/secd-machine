@@ -12,6 +12,7 @@ idf_component_register(
         "${SECD_SRC_DIR}/core/primitives.cpp"
         "${SECD_SRC_DIR}/core/symbols.cpp"
         "${SECD_SRC_DIR}/hal/esp32.cpp"
+        "${SECD_SRC_DIR}/firmware/secd_boot.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/secd_start.cpp"
     INCLUDE_DIRS
         "${SECD_INC_DIR}"
@@ -29,4 +30,6 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
     SECD_FEATURE_I2C=1
     SECD_BYTEVEC_ARENA_SIZE=131072
     SECD_FEATURES_STR="gpio,uart,i2c"
+    SECD_PLATFORM_NAME="ESP32-C3"
+    SECD_MACHINE_VERSION="0.0.1.0"
     SECD_DEBUG_BUILD=$<BOOL:${SECD_DEBUG_BUILD}>)

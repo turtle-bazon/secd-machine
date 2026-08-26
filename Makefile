@@ -23,7 +23,7 @@ LIB = libsecd.a
 OUTPUT_DIR = output
 # Scratch dir for generated target metadata (zipped into .machine, not delivered)
 META_DIR = $(OUTPUT_DIR)/.build
-TARGETS = rp2040-pico rp2040-zero rp2350-zero rp2350-beetle seeed-xiao-samd21 esp32c3-supermini stamp-s3a blue-pill black-pill-f401 esp32s3-devkit lolin-s3-mini lolin-s2-mini
+TARGETS = rp2040-pico rp2040-zero rp2350-zero rp2350-beetle seeed-xiao-samd21 esp32c3-supermini stamp-s3a blue-pill black-pill-f401 esp32s3-devkit lolin-s3-mini lolin-s2-mini nrf52840-promicro
 
 # Pico SDK
 PICO_SDK_PATH ?= /tmp/pico-sdk
@@ -69,6 +69,7 @@ SAMD21_CFLAGS_RELEASE = -mcpu=cortex-m0plus -mthumb -Os -ffunction-sections -fda
 	-DSECD_MACHINE_VERSION='"0.0.1.0"' -DSECD_FEATURES_STR='"gpio"' -DSECD_DEBUG_BUILD=0
 SAMD21_SRCS = platforms/samd21/main.cpp platforms/samd21/startup_samd21.cpp \
 	platforms/samd21/syscalls.cpp \
+	src/firmware/secd_boot.cpp \
 	src/hal/samd21.cpp \
 	src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp src/core/bytecode.cpp \
 	src/core/primitives.cpp src/core/symbols.cpp
@@ -80,6 +81,7 @@ SAMD21_SRCS = platforms/samd21/main.cpp platforms/samd21/startup_samd21.cpp \
 STM32_CC = arm-none-eabi-g++
 STM32_CORE_SRCS = platforms/stm32/main.cpp platforms/stm32/startup_stm32.cpp \
 	platforms/stm32/syscalls.cpp \
+	src/firmware/secd_boot.cpp \
 	src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp src/core/bytecode.cpp \
 	src/core/primitives.cpp src/core/symbols.cpp
 
@@ -109,22 +111,58 @@ NRF52840_DIR_RELEASE = build/nrf52840-release
 NRF52840_CC = arm-none-eabi-g++
 NRF52840_CORE_SRCS = platforms/nrf52840/main.cpp platforms/nrf52840/startup_nrf52840.cpp \
 	platforms/nrf52840/syscalls.cpp \
+	src/firmware/secd_boot.cpp \
 	src/core/heap.cpp src/core/gc.cpp src/core/machine.cpp src/core/bytecode.cpp \
 	src/core/primitives.cpp src/core/symbols.cpp
 
 NRF52840_CFLAGS = -mcpu=cortex-m4 -mthumb -Os -ffunction-sections -fdata-sections \
 	-Wall -Wextra -Iinclude -DSECD_FEATURE_GPIO=1 -DSECD_FEATURE_UART=1 -DSECD_FEATURE_I2C=1 \
-	-DSECD_MACHINE_VERSION='"0.0.1.0"' -DSECD_PLATFORM_NAME='"nRF52840"' \
-	-DSECD_HEAP_OBJECTS=4096 -DSECD_FEATURES_STR='"gpio,uart,i2c"' -DSECD_DEBUG_BUILD=1
+	-DSECD_MACHINE_VERSION='"0.0.1.0"' -DSECD_PLATFORM_NAME='"nRF52840 SuperMini"' \
+	-DSECD_HEAP_OBJECTS=4096 -DSECD_FEATURES_STR='"gpio,uart,i2c"' -DSECD_DEBUG_BUILD=1 \
+	-Iplatforms/nrf52840 \
+	-Ithird_party/cherryusb/common -Ithird_party/cherryusb/core \
+	-Ithird_party/cherryusb/class/cdc -Ithird_party/cherryusb/class/hid \
+	-Ithird_party/cherryusb/port/nrf52840 \
+	-Ithird_party/nordic/shim -Ithird_party/nordic/mdk -Ithird_party/nordic/hal \
+	-Ithird_party/nordic/drivers/src -Ithird_party/cmsis \
+	-DNRF52840_XXAA -fpermissive
 NRF52840_CFLAGS_RELEASE = $(filter-out -DSECD_DEBUG_BUILD=1,$(NRF52840_CFLAGS)) -DSECD_DEBUG_BUILD=0
-NRF52840_SRCS = $(NRF52840_CORE_SRCS) src/hal/nrf52840.cpp
+NRF52840_SRCS = $(NRF52840_CORE_SRCS) src/hal/nrf52840.cpp \
+	platforms/nrf52840/usb.cpp
+
+# CherryUSB device stack on top of TinyUSB's proven nRF5x DCD. Compiled as C++
+# (whole image is g++) with -fpermissive so the stack's C sources build cleanly.
+NRF52840_CHERRY_SRCS = \
+	third_party/cherryusb/core/usbd_core.c \
+	third_party/cherryusb/class/cdc/usbd_cdc_acm.c \
+	third_party/cherryusb/class/hid/usbd_hid.c \
+	third_party/cherryusb/port/nrf52840/usb_dc_nrf5x.c
+NRF52840_CHERRY_OBJS := $(patsubst %.c,build/nrf52840/cherry/%.o,$(NRF52840_CHERRY_SRCS))
+NRF52840_SRCS += $(NRF52840_CHERRY_OBJS)
+
+$(NRF52840_DIR)/cherry/%.o: %.c
+	@mkdir -p $(dir $@)
+	@arm-none-eabi-g++ -c $(NRF52840_CFLAGS) $< -o $@
+
+# Application flash base for nRF52840 comes from the board metadata (the
+# Adafruit nRF52 bootloader + S140 SoftDevice occupy 0x0000..0x26000), and is
+# injected into the linker as __app_base__. Single source of truth: the board JSON.
+NRF52840_BOARD = targets/boards/nrf52840-promicro.json
+NRF52840_APP_BASE = $(shell python3 -c "import json; print(json.load(open('$(NRF52840_BOARD)'))['output']['base_address'])")
+NRF52840_UF2_FAMILY = $(shell python3 -c "import json; print(json.load(open('$(NRF52840_BOARD)'))['output']['uf2_family_id'])")
+# Extra link flags (the comma in -Wl,--defsym must live inside a $(...) so
+# $(call) doesn't split it on the comma).
+# --nmagic disables 64KB ELF page alignment so the PT_LOAD base equals the true
+# app address (0x26000); otherwise objcopy pads a 0x6000 hole and the UF2 would
+# flash the vector table to the wrong address.
+NRF52840_LINKFLAGS = -Wl,--defsym=__app_base__=$(NRF52840_APP_BASE) -Wl,--nmagic
 
 define STM32-LINK
 	@mkdir -p $(1)
 	@echo "void __cxa_pure_virtual(void) {}" > $(1)/dummy.cpp
 	@arm-none-eabi-g++ -c $(1)/dummy.cpp -o $(1)/dummy.o
 	@arm-none-eabi-ar rcs $(1)/libstdc++.a $(1)/dummy.o
-	@$(2) $(3) $(5) -Wl,-T,$(4) -Wl,--gc-sections -nostartfiles \
+	@$(2) $(3) $(5) $(6) -Wl,-T,$(4) -Wl,--gc-sections -nostartfiles \
 		-L$(1) -lm -o $(1)/secd-machine.elf
 endef
 
@@ -141,10 +179,10 @@ $(STM32F401_DIR_RELEASE)/secd-machine.elf: $(STM32F401_SRCS)
 	$(call STM32-LINK,$(STM32F401_DIR_RELEASE),$(STM32_CC),$(STM32F401_CFLAGS_RELEASE),platforms/stm32/stm32f401rc.ld,$(STM32F401_SRCS))
 
 $(NRF52840_DIR)/secd-machine.elf: $(NRF52840_SRCS)
-	$(call STM32-LINK,$(NRF52840_DIR),$(STM32_CC),$(NRF52840_CFLAGS),platforms/nrf52840/nrf52840.ld,$(NRF52840_SRCS))
+	$(call STM32-LINK,$(NRF52840_DIR),$(STM32_CC),$(NRF52840_CFLAGS),platforms/nrf52840/nrf52840.ld,$(NRF52840_SRCS),$(NRF52840_LINKFLAGS))
 
 $(NRF52840_DIR_RELEASE)/secd-machine.elf: $(NRF52840_SRCS)
-	$(call STM32-LINK,$(NRF52840_DIR_RELEASE),$(STM32_CC),$(NRF52840_CFLAGS_RELEASE),platforms/nrf52840/nrf52840.ld,$(NRF52840_SRCS))
+	$(call STM32-LINK,$(NRF52840_DIR_RELEASE),$(STM32_CC),$(NRF52840_CFLAGS_RELEASE),platforms/nrf52840/nrf52840.ld,$(NRF52840_SRCS),$(NRF52840_LINKFLAGS))
 
 
 
@@ -167,24 +205,30 @@ endef
 $(OUTPUT_DIR)/blue-pill.machine: $(STM32F103_DIR)/firmware.bin $(META_DIR)/blue-pill.metadata.json
 	$(call STM32-PACK,$(STM32F103_DIR),blue-pill,$@)
 
-# nRF52840 board .machine packaging
-$(OUTPUT_DIR)/nrf52840-supermini.machine: build/nrf52840/firmware.bin $(META_DIR)/nrf52840-supermini.metadata.json
-	@mkdir -p $(OUTPUT_DIR)
-	@python3 -c "import zipfile; \
-		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
-		zf.write('build/nrf52840/firmware.bin', 'firmware.bin'); \
-		zf.write('$(META_DIR)/nrf52840-supermini.metadata.json', 'metadata.json'); \
-		zf.close()"
-	@echo "Created $@ (firmware.bin + metadata.json)"
+# nRF52840 board .machine packaging (UF2 for the Adafruit nRF52 bootloader)
+build/nrf52840/firmware.uf2: build/nrf52840/firmware.bin
+	@python3 tools/uf2.py $< $@ $(NRF52840_APP_BASE) $(NRF52840_UF2_FAMILY)
 
-$(OUTPUT_DIR)/nrf52840-supermini.release.machine: build/nrf52840/firmware.bin $(META_DIR)/nrf52840-supermini.metadata.json
+build/nrf52840-release/firmware.uf2: build/nrf52840-release/firmware.bin
+	@python3 tools/uf2.py $< $@ $(NRF52840_APP_BASE) $(NRF52840_UF2_FAMILY)
+
+$(OUTPUT_DIR)/nrf52840-promicro.machine: build/nrf52840/firmware.uf2 $(META_DIR)/nrf52840-promicro.metadata.json
 	@mkdir -p $(OUTPUT_DIR)
 	@python3 -c "import zipfile; \
 		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
-		zf.write('build/nrf52840/firmware.bin', 'firmware.bin'); \
-		zf.write('$(META_DIR)/nrf52840-supermini.metadata.json', 'metadata.json'); \
+		zf.write('build/nrf52840/firmware.uf2', 'firmware.uf2'); \
+		zf.write('$(META_DIR)/nrf52840-promicro.metadata.json', 'metadata.json'); \
 		zf.close()"
-	@echo "Created $@ (firmware.bin + metadata.json)"
+	@echo "Created $@ (firmware.uf2 + metadata.json)"
+
+$(OUTPUT_DIR)/nrf52840-promicro.release.machine: build/nrf52840-release/firmware.uf2 $(META_DIR)/nrf52840-promicro.metadata.json
+	@mkdir -p $(OUTPUT_DIR)
+	@python3 -c "import zipfile; \
+		zf = zipfile.ZipFile('$@', 'w', zipfile.ZIP_DEFLATED); \
+		zf.write('build/nrf52840-release/firmware.uf2', 'firmware.uf2'); \
+		zf.write('$(META_DIR)/nrf52840-promicro.metadata.json', 'metadata.json'); \
+		zf.close()"
+	@echo "Created $@ (firmware.uf2 + metadata.json)"
 
 $(OUTPUT_DIR)/blue-pill.release.machine: $(STM32F103_DIR_RELEASE)/firmware.bin $(META_DIR)/blue-pill.metadata.json
 	$(call STM32-PACK,$(STM32F103_DIR_RELEASE),blue-pill,$@)

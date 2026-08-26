@@ -62,6 +62,7 @@ pico_sdk_init()
 set(SOURCES
     main.cpp
     usb.cpp
+    ../../src/firmware/secd_boot.cpp
     ../../src/core/heap.cpp
     ../../src/core/gc.cpp
     ../../src/core/machine.cpp
@@ -89,6 +90,7 @@ target_compile_definitions(secd-machine PRIVATE SECD_FEATURE_I2C=1)
 set(SECD_MACHINE_VERSION "0.0.1.0" CACHE STRING "SECD Machine version (reported over serial in debug builds)")
 target_compile_definitions(secd-machine PRIVATE SECD_MACHINE_VERSION="${SECD_MACHINE_VERSION}")
 target_compile_definitions(secd-machine PRIVATE SECD_FEATURES_STR="${SECD_FEATURES}")
+target_compile_definitions(secd-machine PRIVATE SECD_PLATFORM_NAME="RP2040-Pico")
 
 # Enable per-feature defines and collect peripheral libraries
 foreach(_f ${_SECD_FEATURES})

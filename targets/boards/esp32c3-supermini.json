@@ -1,29 +1,33 @@
 {
-    "name": "esp32c3-supermini",
-    "chip": "esp32c3",
-    "board": "ESP32-C3 SuperMini",
-    "description": "ESP32-C3 SuperMini (4MB flash, single-core RISC-V 160MHz), on-board WS2812 RGB LED on GPIO8, USB-CDC console",
-    "memory": {
-        "flash_size": 4194304,
-        "heap_size": 200000,
-        "stack_size": 16384,
-        "symbols_size": 512
-    },
-    "flash_layout": {
-        "firmware_addr": 0,
-        "firmware_size": 1572864,
-        "bytecode_addr": 1572864,
-        "bytecode_size": 1048576
-    },
-    "board_pins": {
-        "ws2812_pin": 8,
-        "led_pin": 8
-    },
-    "features": [
-        "gpio",
-        "uart",
-        "i2c",
-        "sleep",
-        "millis"
-    ]
+  "name": "esp32c3-supermini",
+  "chip": "esp32c3",
+  "board": "ESP32-C3 SuperMini",
+  "description": "ESP32-C3 SuperMini (4MB flash, single-core RISC-V 160MHz), on-board WS2812 RGB LED on GPIO8, USB-CDC console",
+  "memory": {
+    "flash_size": 4194304,
+    "heap_size": 200000,
+    "stack_size": 16384,
+    "symbols_size": 512
+  },
+  "flash_layout": {
+    "firmware_addr": 0,
+    "firmware_size": 1572864,
+    "bytecode_addr": 1572864,
+    "bytecode_size": 1048576
+  },
+  "board_pins": {
+    "ws2812_pin": 8,
+    "led_pin": 8
+  },
+  "features": [
+    "gpio",
+    "uart",
+    "i2c",
+    "sleep",
+    "millis"
+  ],
+  "output": {
+    "format": "bin",
+    "base_address": 65536
+  }
 }

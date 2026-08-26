@@ -1,0 +1,39 @@
+{
+  "name": "nrf52840-promicro",
+  "chip": "nrf52840",
+  "board": "V1940 ProMicro NRF52840 (nice!nano-compatible)",
+  "description": "V1940 ProMicro NRF52840, a nice!nano-compatible clone (1MB flash, 256KB SRAM), HSE 32MHz -> 64MHz. Ships the Adafruit nRF52 UF2 bootloader with SoftDevice S140 6.1.1, so the application runs at 0x26000 and is flashed as a UF2 via the bootloader mass-storage. No RGB LED (user LED on P1.10); console is the physical UART (TX/RX on P1.02/P1.03 @115200) which needs an external serial adapter; there is no onboard USB-UART bridge and no USB CDC in the app. I2C1 SCL P0.27 / SDA P0.26. ESB radio is available for split-keyboard half-to-half; BLE HID uses the on-chip S140.",
+  "memory": {
+    "flash_size": 1048576,
+    "heap_size": 65536,
+    "stack_size": 16384,
+    "symbols_size": 512
+  },
+  "flash_layout": {
+    "firmware_addr": 155648,
+    "firmware_size": 720896,
+    "bytecode_addr": 876544,
+    "bytecode_size": 172032
+  },
+  "board_pins": {
+    "ws2812_pin": null,
+    "led_pin": 42,
+    "console_uart_tx": 6,
+    "console_uart_rx": 8,
+    "i2c1_scl": 27,
+    "i2c1_sda": 26
+  },
+  "features": [
+    "gpio",
+    "uart",
+    "i2c",
+    "sleep",
+    "millis",
+    "radio"
+  ],
+  "output": {
+    "format": "uf2",
+    "base_address": 155648,
+    "uf2_family_id": "0xADA52840"
+  }
+}

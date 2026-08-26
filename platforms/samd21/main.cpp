@@ -10,6 +10,7 @@
 #include "secd/machine.h"
 #include "secd/heap.h"
 #include "secd/bytecode.h"
+#include "secd/boot.h"
 #include "hal/hal.h"
 
 #ifndef SECD_MACHINE_VERSION
@@ -37,7 +38,8 @@ static secd_machine_t machine;
 #endif
 
 /* Load bytecode glued right after firmware in flash. */
-static int load_bytecode(void) {
+static int load_bytecode(secd_machine_t *m, secd_heap_t *h) {
+    (void)h;
     const uint8_t *base = (const uint8_t *)(const void *)__flash_binary_end;
     const uint8_t *ptr = NULL;
 
@@ -64,32 +66,16 @@ static int load_bytecode(void) {
     hal_print_int(const_size);
     SECD_INFO("\n");
 
-    return secd_execute(&machine, ptr + 14, code_size + const_size);
+    secd_execute(m, ptr + 14, (size_t)code_size + (size_t)const_size);
+    return 0;
 }
 
 int main(void) {
     secd_hal_init();
 
-#if SECD_DEBUG_BUILD
-    SECD_INFO("SECD Machine v");
-    SECD_INFO(SECD_MACHINE_VERSION);
-    SECD_INFO("\n");
-    SECD_INFO("Platform: XIAO SAMD21\n");
-#endif
-
-    if (secd_heap_init(&heap, HEAP_OBJECTS) != 0) {
-        SECD_INFO("Heap init failed\n");
-        return 1;
-    }
-
-    if (secd_machine_init(&machine, &heap) != 0) {
-        SECD_INFO("Machine init failed\n");
-        return 1;
-    }
-
-    if (load_bytecode() != 0) {
-        SECD_INFO("No valid bytecode\n");
-    }
+    /* Shared boot: banner, heap, machine, then load+execute the bytecode
+     * image via the per-board loader above. */
+    secd_machine_boot(&machine, &heap, HEAP_OBJECTS, load_bytecode);
 
     for (;;) {
         hal_delay(1000);

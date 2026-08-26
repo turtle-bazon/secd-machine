@@ -91,6 +91,15 @@ void hal_print(const char *str);
 void hal_println(const char *str);
 void hal_print_int(int32_t value);
 
+/* Console (boot banner / REPL) — platform binding.
+ * Backed by USB-CDC on nRF/RP2/ESP32 and by UART on STM32/SAMD21, so the
+ * shared firmware core can print the banner identically on every target. */
+size_t secd_console_write(const uint8_t *data, size_t len);
+void   secd_console_write_char(char c);
+int    secd_console_read(void);        /* -1 if empty */
+int    secd_console_available(void);
+bool   secd_console_ready(void);       /* host opened the console (DTR / IN) */
+
 /* USB HID keyboard (available when SECD_FEATURE_HID is enabled). */
 #ifndef SECD_FEATURE_HID
 #define SECD_FEATURE_HID 0

@@ -31,9 +31,12 @@ def main() -> None:
     total = len(chunks)
     blocks = []
     for i, chunk in enumerate(chunks):
+        # payloadSize MUST be a constant 256 in every header: bootloaders
+        # (e.g. Adafruit nRF52 ghostfat.c) reject any other value outright,
+        # which stalls the flash at the last partial chunk.
         header = struct.pack(
             "<IIIIIIII",
-            MAGIC0, MAGIC1, FLAG_FAMILY, base + i * 256, len(chunk), i, total, family,
+            MAGIC0, MAGIC1, FLAG_FAMILY, base + i * 256, 256, i, total, family,
         )
         block = header + chunk.ljust(256, b"\xff") + bytes(220) + struct.pack("<I", END_MAGIC)
         blocks.append(block)

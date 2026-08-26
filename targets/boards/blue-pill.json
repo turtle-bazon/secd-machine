@@ -1,35 +1,39 @@
 {
-    "name": "blue-pill",
-    "chip": "stm32f103",
-    "board": "Blue Pill STM32F103CBT6",
-    "description": "Blue Pill (STM32F103CBT6, 128KB flash / 20KB SRAM), HSE 8MHz -> PLL x9 = 72MHz. Active-low LED on PC13. Console USART1: TX PA9 / RX PA10 @115200 (same pins as the ROM serial bootloader). I2C1 SCL PB6 / SDA PB7, I2C2 SCL PB10 / SDA PB11. Pin numbers in this metadata use port*16+pin (PA0..15=0..15, PB=16..31, PC=32..47). Flash via SWD (st-flash) or the UART1 bootloader; the linked final.bin image goes to 0x08000000.",
-    "memory": {
-        "flash_size": 131072,
-        "heap_size": 8192,
-        "stack_size": 8192,
-        "symbols_size": 512
-    },
-    "flash_layout": {
-        "firmware_addr": 134217728,
-        "firmware_size": 114688,
-        "bytecode_addr": 134332416,
-        "bytecode_size": 16384
-    },
-    "board_pins": {
-        "ws2812_pin": null,
-        "led_pin": 45,
-        "console_uart_tx": 9,
-        "console_uart_rx": 10,
-        "i2c1_scl": 22,
-        "i2c1_sda": 23,
-        "i2c2_scl": 26,
-        "i2c2_sda": 27
-    },
-    "features": [
-        "gpio",
-        "uart",
-        "i2c",
-        "sleep",
-        "millis"
-    ]
+  "name": "blue-pill",
+  "chip": "stm32f103",
+  "board": "Blue Pill STM32F103CBT6",
+  "description": "Blue Pill (STM32F103CBT6, 128KB flash / 20KB SRAM), HSE 8MHz -> PLL x9 = 72MHz. Active-low LED on PC13. Console USART1: TX PA9 / RX PA10 @115200 (same pins as the ROM serial bootloader). I2C1 SCL PB6 / SDA PB7, I2C2 SCL PB10 / SDA PB11. Pin numbers in this metadata use port*16+pin (PA0..15=0..15, PB=16..31, PC=32..47). Flash via SWD (st-flash) or the UART1 bootloader; the linked final.bin image goes to 0x08000000.",
+  "memory": {
+    "flash_size": 131072,
+    "heap_size": 8192,
+    "stack_size": 8192,
+    "symbols_size": 512
+  },
+  "flash_layout": {
+    "firmware_addr": 134217728,
+    "firmware_size": 114688,
+    "bytecode_addr": 134332416,
+    "bytecode_size": 16384
+  },
+  "board_pins": {
+    "ws2812_pin": null,
+    "led_pin": 45,
+    "console_uart_tx": 9,
+    "console_uart_rx": 10,
+    "i2c1_scl": 22,
+    "i2c1_sda": 23,
+    "i2c2_scl": 26,
+    "i2c2_sda": 27
+  },
+  "features": [
+    "gpio",
+    "uart",
+    "i2c",
+    "sleep",
+    "millis"
+  ],
+  "output": {
+    "format": "bin",
+    "base_address": 134217728
+  }
 }

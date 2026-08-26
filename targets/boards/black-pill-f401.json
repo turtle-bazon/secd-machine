@@ -1,35 +1,39 @@
 {
-    "name": "black-pill-f401",
-    "chip": "stm32f401",
-    "board": "Black Pill v1204 (STM32F401RCT6)",
-    "description": "WeAct-style Black Pill marked stm32f401/411 v1204 (STM32F401RCT6, 256KB flash / 64KB SRAM), HSE 25MHz -> PLL (M=25,N=336,P=4) = 84MHz. Active-low LED on PC13 on this revision (some revisions use PA5). KEY button on PA0. Console USART1: TX PA9 / RX PA10 @115200. I2C1 SCL PB6 / SDA PB7, I2C2 SCL PB10 / SDA PB11. Pin numbers use port*16+pin (PA0..15=0..15, PB=16..31, PC=32..47). Flash via SWD or the ROM DFU bootloader (hold BOOT0); the linked final.bin image goes to 0x08000000.",
-    "memory": {
-        "flash_size": 262144,
-        "heap_size": 24576,
-        "stack_size": 16384,
-        "symbols_size": 512
-    },
-    "flash_layout": {
-        "firmware_addr": 134217728,
-        "firmware_size": 245760,
-        "bytecode_addr": 134479872,
-        "bytecode_size": 16384
-    },
-    "board_pins": {
-        "ws2812_pin": null,
-        "led_pin": 45,
-        "console_uart_tx": 9,
-        "console_uart_rx": 10,
-        "i2c1_scl": 22,
-        "i2c1_sda": 23,
-        "i2c2_scl": 26,
-        "i2c2_sda": 27
-    },
-    "features": [
-        "gpio",
-        "uart",
-        "i2c",
-        "sleep",
-        "millis"
-    ]
+  "name": "black-pill-f401",
+  "chip": "stm32f401",
+  "board": "Black Pill v1204 (STM32F401RCT6)",
+  "description": "WeAct-style Black Pill marked stm32f401/411 v1204 (STM32F401RCT6, 256KB flash / 64KB SRAM), HSE 25MHz -> PLL (M=25,N=336,P=4) = 84MHz. Active-low LED on PC13 on this revision (some revisions use PA5). KEY button on PA0. Console USART1: TX PA9 / RX PA10 @115200. I2C1 SCL PB6 / SDA PB7, I2C2 SCL PB10 / SDA PB11. Pin numbers use port*16+pin (PA0..15=0..15, PB=16..31, PC=32..47). Flash via SWD or the ROM DFU bootloader (hold BOOT0); the linked final.bin image goes to 0x08000000.",
+  "memory": {
+    "flash_size": 262144,
+    "heap_size": 24576,
+    "stack_size": 16384,
+    "symbols_size": 512
+  },
+  "flash_layout": {
+    "firmware_addr": 134217728,
+    "firmware_size": 245760,
+    "bytecode_addr": 134479872,
+    "bytecode_size": 16384
+  },
+  "board_pins": {
+    "ws2812_pin": null,
+    "led_pin": 45,
+    "console_uart_tx": 9,
+    "console_uart_rx": 10,
+    "i2c1_scl": 22,
+    "i2c1_sda": 23,
+    "i2c2_scl": 26,
+    "i2c2_sda": 27
+  },
+  "features": [
+    "gpio",
+    "uart",
+    "i2c",
+    "sleep",
+    "millis"
+  ],
+  "output": {
+    "format": "bin",
+    "base_address": 134217728
+  }
 }

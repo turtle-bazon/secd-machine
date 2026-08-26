@@ -15,6 +15,7 @@
 #include "secd/machine.h"
 #include "secd/heap.h"
 #include "secd/bytecode.h"
+#include "secd/boot.h"
 #include "hal/rp2040.h"
 #include "usb.h"
 #include "pico/stdlib.h"
@@ -58,7 +59,8 @@ static void secd_info(const char *fmt, ...) {
 #endif
 
 /* Load bytecode glued right after firmware in flash (via __flash_binary_end) */
-static int load_bytecode(void) {
+static int load_bytecode(secd_machine_t *m, secd_heap_t *h) {
+    (void)h;
     const uint8_t *base = (const uint8_t *)&__flash_binary_end;
     const uint8_t *ptr = NULL;
 
@@ -96,7 +98,7 @@ static int load_bytecode(void) {
 #endif
 
     /* Execute bytecode (skip header) */
-    return secd_execute(&machine, ptr + header_size, code_size + const_size);
+    return secd_execute(m, ptr + header_size, code_size + const_size);
 }
 
 /* Hold every GPIO at a defined low level from the first instruction so that
@@ -127,33 +129,10 @@ int main(void) {
     while (!secd_console_ready()) {
         sleep_ms(20);
     }
-
-    SECD_INFO("SECD Machine v%s\n", SECD_MACHINE_VERSION);
-    SECD_INFO("Build: %s\n", SECD_DEBUG_BUILD ? "debug (serial + info)" : "release");
-    SECD_INFO("Features: %s\n", SECD_FEATURES_STR);
-    SECD_INFO("Platform: RP2040 (Pico)\n");
-    SECD_INFO("Heap: %d objects (~%d bytes)\n", HEAP_OBJECTS, HEAP_OBJECTS * sizeof(secd_object_t));
 #endif
 
-    /* Initialize heap */
-    if (secd_heap_init(&heap, HEAP_OBJECTS) != 0) {
-        SECD_INFO("Error: Failed to initialize heap\n");
-        return 1;
-    }
-    SECD_INFO("Heap initialized\n");
-
-    /* Initialize machine */
-    if (secd_machine_init(&machine, &heap) != 0) {
-        SECD_INFO("Error: Failed to initialize machine\n");
-        return 1;
-    }
-    SECD_INFO("Machine initialized\n");
-
-    /* Load and execute bytecode from flash */
-    SECD_INFO("Loading bytecode...\n");
-    if (load_bytecode() != 0) {
-        SECD_INFO("No valid bytecode\n");
-    }
+    /* Shared boot: identical verbose banner + init log on every target. */
+    secd_machine_boot(&machine, &heap, HEAP_OBJECTS, load_bytecode);
 
     /* Hold the VM (bytecode either ran to completion or was absent) */
     for (;;) {

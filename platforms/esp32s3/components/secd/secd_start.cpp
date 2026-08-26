@@ -16,6 +16,7 @@
  */
 #include "secd/machine.h"
 #include "secd/heap.h"
+#include "secd/boot.h"
 #include "hal/hal.h"
 #include "usb.h"
 #include "esp_partition.h"
@@ -209,9 +210,7 @@ extern "C" int secd_start(void) {
     }
 #endif
 
-    SECD_INFO("SECD Machine v%s\n", SECD_MACHINE_VERSION);
-    SECD_INFO("Platform: ESP32-S3\n");
-    SECD_INFO("Features: %s\n", SECD_FEATURES_STR);
+    secd_print_banner();
     /* Hold the boot console a moment longer so the host can capture the
      * banner before control passes to the Lisp bytecode. */
     SECD_WAIT_MS(2000);

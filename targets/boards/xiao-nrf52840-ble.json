@@ -1,35 +1,40 @@
 {
-    "name": "xiao-nrf52840-ble",
-    "chip": "nrf52840",
-    "board": "Seeed XIAO nRF52840 BLE (Sense)",
-    "description": "Seeed XIAO nRF52840 BLE Sense (1MB flash, 256KB SRAM), HSE 32MHz -> 64MHz. RGB LED (user) on P0.26 red / P0.30 green / P0.31 blue, charge LED on P0.17. Console UART0: TX P0.06 / RX P0.08 @115200. I2C1 SCL P0.27 / SDA P0.26 (internal IMU LSM6DS3 + PDM mic on same bus). SWD pads + USB DFU (Adafruit nRF52 bootloader).",
-    "memory": {
-        "flash_size": 1048576,
-        "heap_size": 65536,
-        "stack_size": 16384,
-        "symbols_size": 512
-    },
-    "flash_layout": {
-        "firmware_addr": 4096,
-        "firmware_size": 917504,
-        "bytecode_addr": 921600,
-        "bytecode_size": 122880
-    },
-    "board_pins": {
-        "ws2812_pin": null,
-        "led_r_pin": 26,
-        "led_g_pin": 30,
-        "led_b_pin": 31,
-        "console_uart_tx": 6,
-        "console_uart_rx": 8,
-        "i2c1_scl": 27,
-        "i2c1_sda": 26
-    },
-    "features": [
-        "gpio",
-        "uart",
-        "i2c",
-        "sleep",
-        "millis"
-    ]
+  "name": "xiao-nrf52840-ble",
+  "chip": "nrf52840",
+  "board": "Seeed XIAO nRF52840 BLE (Sense)",
+  "description": "Seeed XIAO nRF52840 BLE Sense (1MB flash, 256KB SRAM), HSE 32MHz -> 64MHz. RGB LED (user) on P0.26 red / P0.30 green / P0.31 blue, charge LED on P0.17. Console UART0: TX P0.06 / RX P0.08 @115200. I2C1 SCL P0.27 / SDA P0.26 (internal IMU LSM6DS3 + PDM mic on same bus). SWD pads + USB DFU (Adafruit nRF52 bootloader).",
+  "memory": {
+    "flash_size": 1048576,
+    "heap_size": 65536,
+    "stack_size": 16384,
+    "symbols_size": 512
+  },
+  "flash_layout": {
+    "firmware_addr": 4096,
+    "firmware_size": 917504,
+    "bytecode_addr": 921600,
+    "bytecode_size": 122880
+  },
+  "board_pins": {
+    "ws2812_pin": null,
+    "led_r_pin": 26,
+    "led_g_pin": 30,
+    "led_b_pin": 31,
+    "console_uart_tx": 6,
+    "console_uart_rx": 8,
+    "i2c1_scl": 27,
+    "i2c1_sda": 26
+  },
+  "features": [
+    "gpio",
+    "uart",
+    "i2c",
+    "sleep",
+    "millis"
+  ],
+  "output": {
+    "format": "uf2",
+    "base_address": 155648,
+    "uf2_family_id": "0xADA52840"
+  }
 }

@@ -12,6 +12,7 @@ idf_component_register(
         "${SECD_SRC_DIR}/core/primitives.cpp"
         "${SECD_SRC_DIR}/core/symbols.cpp"
         "${SECD_SRC_DIR}/hal/esp32.cpp"
+        "${SECD_SRC_DIR}/firmware/secd_boot.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/secd_start.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/usb.cpp"
     INCLUDE_DIRS
@@ -33,6 +34,8 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
     SECD_FEATURE_HID=1
     SECD_BYTEVEC_ARENA_SIZE=262144
     SECD_FEATURES_STR="gpio,uart,i2c,usb"
+    SECD_PLATFORM_NAME="ESP32-S3"
+    SECD_MACHINE_VERSION="0.0.1.0"
     SECD_DEBUG_BUILD=$<BOOL:${SECD_DEBUG_BUILD}>)
 # NimBLE GATT table macros trigger -Waddress-of-rvalue / missing-field-initializers
 target_compile_options(${COMPONENT_LIB} PRIVATE

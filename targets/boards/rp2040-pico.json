@@ -1,24 +1,29 @@
 {
-    "name": "rp2040-pico",
-    "chip": "rp2040",
-    "board": "Raspberry Pi Pico",
-    "description": "Raspberry Pi Pico with RP2040",
-    "memory": {
-        "heap_size": 4095,
-        "stack_size": 16000,
-        "symbols_size": 256
-    },
-    "flash_layout": {
-        "firmware_addr": 0,
-        "firmware_size": 1048576,
-        "bytecode_addr": 1048576,
-        "bytecode_size": 524288
-    },
-    "features": [
-        "gpio",
-        "uart",
-        "i2c",
-        "sleep",
-        "millis"
-    ]
+  "name": "rp2040-pico",
+  "chip": "rp2040",
+  "board": "Raspberry Pi Pico",
+  "description": "Raspberry Pi Pico with RP2040",
+  "memory": {
+    "heap_size": 4095,
+    "stack_size": 16000,
+    "symbols_size": 256
+  },
+  "flash_layout": {
+    "firmware_addr": 0,
+    "firmware_size": 1048576,
+    "bytecode_addr": 1048576,
+    "bytecode_size": 524288
+  },
+  "features": [
+    "gpio",
+    "uart",
+    "i2c",
+    "sleep",
+    "millis"
+  ],
+  "output": {
+    "format": "uf2",
+    "base_address": 268435456,
+    "uf2_family_id": "0xE48BFF56"
+  }
 }
