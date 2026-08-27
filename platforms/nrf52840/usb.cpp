@@ -37,6 +37,16 @@ extern "C" {
 void cherry_usb_hal_nrf_power_event(uint32_t event);
 }
 
+/* When the SoftDevice is present it owns the NVIC and the clock; the nRF5x DCD
+ * already routes HFCLK through sd_clock_hfclk_* under SOFTDEVICE_PRESENT. App
+ * interrupts must also go through sd_nvic so the SD forwards USBD to us. The
+ * shim declares just the SD entry points without dragging in nrf.h (which would
+ * clash with nrf5x_regs.h). */
+#ifdef SOFTDEVICE_PRESENT
+#define SECD_SD_NEED_NVIC
+#include "sd_shim.h"
+#endif
+
 #define MAX_CDC 2
 #define MAX_HID 2
 #define RING_SIZE 256
@@ -281,18 +291,28 @@ static void secd_usbd_event_handler(uint8_t busid, uint8_t event)
 }
 
 /* ---------------- NVIC enable/disable (TinyUSB's tud_init did this) ---------------- */
-#define USBD_IRQn 39
 static void enable_usbd_irq(void)
 {
+    /* When the SoftDevice is present it owns the NVIC; app IRQs must be routed
+     * through sd_nvic so the SD forwards USBD to our handler. */
+#ifdef SOFTDEVICE_PRESENT
+    (void)sd_nvic_SetPriority((IRQn_Type)USBD_IRQn, 2);
+    (void)sd_nvic_EnableIRQ((IRQn_Type)USBD_IRQn);
+#else
     volatile uint8_t *ipr = (volatile uint8_t *)0xE000E400;
     ipr[USBD_IRQn] = 0x20;   /* preempt priority 2 */
     volatile uint32_t *iser = (volatile uint32_t *)0xE000E100;
     iser[USBD_IRQn >> 5] |= (1u << (USBD_IRQn & 0x1F));
+#endif
 }
 static void disable_usbd_irq(void)
 {
+#ifdef SOFTDEVICE_PRESENT
+    (void)sd_nvic_DisableIRQ((IRQn_Type)USBD_IRQn);
+#else
     volatile uint32_t *icer = (volatile uint32_t *)0xE000E180;
     icer[USBD_IRQn >> 5] = (1u << (USBD_IRQn & 0x1F));
+#endif
 }
 
 /* ===================================================================== */

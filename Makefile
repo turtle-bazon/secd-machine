@@ -117,18 +117,21 @@ NRF52840_CORE_SRCS = platforms/nrf52840/main.cpp platforms/nrf52840/startup_nrf5
 
 NRF52840_CFLAGS = -mcpu=cortex-m4 -mthumb -Os -ffunction-sections -fdata-sections \
 	-Wall -Wextra -Iinclude -DSECD_FEATURE_GPIO=1 -DSECD_FEATURE_UART=1 -DSECD_FEATURE_I2C=1 \
-	-DSECD_FEATURE_HID=1 \
+	-DSECD_FEATURE_HID=1 -DSECD_FEATURE_BLE=1 -DSOFTDEVICE_PRESENT \
 	-DSECD_MACHINE_VERSION='"0.0.1.0"' -DSECD_PLATFORM_NAME='"nRF52840 SuperMini"' \
-	-DSECD_HEAP_OBJECTS=4096 -DSECD_FEATURES_STR='"gpio,uart,i2c"' -DSECD_DEBUG_BUILD=1 \
+	-DSECD_HEAP_OBJECTS=4096 -DSECD_FEATURES_STR='"gpio,uart,i2c,ble"' -DSECD_DEBUG_BUILD=1 \
+	-DSECD_APP_BASE=$(NRF52840_APP_BASE) \
 	-Iplatforms/nrf52840 \
 	-Ithird_party/cherryusb/common -Ithird_party/cherryusb/core \
 	-Ithird_party/cherryusb/class/cdc -Ithird_party/cherryusb/class/hid \
 	-Ithird_party/cherryusb/port/nrf52840 \
 	-Ithird_party/nordic/shim -Ithird_party/nordic/mdk -Ithird_party/nordic/hal \
 	-Ithird_party/nordic/drivers/src -Ithird_party/cmsis \
+	-Ithird_party/nordic/s140/headers -Ithird_party/nordic/s140/headers/nrf52 \
 	-DNRF52840_XXAA -fpermissive
 NRF52840_CFLAGS_RELEASE = $(filter-out -DSECD_DEBUG_BUILD=1,$(NRF52840_CFLAGS)) -DSECD_DEBUG_BUILD=0
 NRF52840_SRCS = $(NRF52840_CORE_SRCS) src/hal/nrf52840.cpp \
+	src/hal/nrf52840_ble.cpp \
 	platforms/nrf52840/usb.cpp
 
 # CherryUSB device stack on top of TinyUSB's proven nRF5x DCD. Compiled as C++
@@ -180,10 +183,10 @@ $(STM32F401_DIR_RELEASE)/secd-machine.elf: $(STM32F401_SRCS)
 	$(call STM32-LINK,$(STM32F401_DIR_RELEASE),$(STM32_CC),$(STM32F401_CFLAGS_RELEASE),platforms/stm32/stm32f401rc.ld,$(STM32F401_SRCS))
 
 $(NRF52840_DIR)/secd-machine.elf: $(NRF52840_SRCS)
-	$(call STM32-LINK,$(NRF52840_DIR),$(STM32_CC),$(NRF52840_CFLAGS),platforms/nrf52840/nrf52840.ld,$(NRF52840_SRCS),$(NRF52840_LINKFLAGS))
+	$(call STM32-LINK,$(NRF52840_DIR),$(STM32_CC),$(NRF52840_CFLAGS),platforms/nrf52840/nrf52840-ble.ld,$(NRF52840_SRCS),$(NRF52840_LINKFLAGS))
 
 $(NRF52840_DIR_RELEASE)/secd-machine.elf: $(NRF52840_SRCS)
-	$(call STM32-LINK,$(NRF52840_DIR_RELEASE),$(STM32_CC),$(NRF52840_CFLAGS_RELEASE),platforms/nrf52840/nrf52840.ld,$(NRF52840_SRCS),$(NRF52840_LINKFLAGS))
+	$(call STM32-LINK,$(NRF52840_DIR_RELEASE),$(STM32_CC),$(NRF52840_CFLAGS_RELEASE),platforms/nrf52840/nrf52840-ble.ld,$(NRF52840_SRCS),$(NRF52840_LINKFLAGS))
 
 
 
@@ -663,14 +666,23 @@ esp32s3-blink: $(OUTPUT_DIR)/stamp-s3a.machine
 esp32s3-cardputer: $(OUTPUT_DIR)/stamp-s3a.machine
 	$(call ESP32-LINK,stamp-s3a,$(SECD_LISP_DIR)/examples/cardputer-input.lisp,CARDPUTER-INPUT:MAIN,/tmp/stamp-s3a-cardputer)
 
+# --- nRF52840 unified firmware (USB + BLE, single image) -----------------
+# One image that brings up the S140 SoftDevice at boot and runs both the
+# CherryUSB (CDC + HID) stack and the BLE HID (S140 GATT) stack. The RAM
+# origin is shifted above the SD's reserved 16 KB (nrf52840-ble.ld) and the
+# app tells the SD where its vector table lives so USBD/UARTE IRQs are
+# forwarded. nrf52840_ble.cpp enables the SD at boot (ble_sd_enable) and the
+# BLE GATT is brought up lazily by %ble-init from Lisp.
+
 # --- nRF52840 example firmware (Lisp glued into the UF2 app image) -------
-# Builds the firmware .machine first, then compiles each example with
+# Builds the unified firmware .machine first, then compiles each example with
 # secd-lisp and links it with the firmware to a flashable UF2. The bundled
 # linker extracts the firmware from the .machine, appends the bytecode past
 # the app image end (where load_bytecode scans for it), and re-wraps as UF2.
+# All three examples share the one unified nrf52840-promicro firmware.
 nrf-examples: nrf52840-promicro
-	$(SECD_LISP_DIR)/build/secd-lisp $(SECD_LISP_DIR)/examples/usb-keyboard.lisp -t nrf52840-promicro --entry "USB-KEYBOARD:MAIN" -o $(OUTPUT_DIR)/usb-keyboard-nrf52840.uf2
 	$(SECD_LISP_DIR)/build/secd-lisp $(SECD_LISP_DIR)/examples/portable-blink.lisp -t nrf52840-promicro --entry "PORTABLE-BLINK:MAIN" -o $(OUTPUT_DIR)/portable-blink-nrf52840.uf2
+	$(SECD_LISP_DIR)/build/secd-lisp $(SECD_LISP_DIR)/examples/usb-keyboard.lisp -t nrf52840-promicro --entry "USB-KEYBOARD:MAIN" -o $(OUTPUT_DIR)/usb-keyboard-nrf52840.uf2
 	$(SECD_LISP_DIR)/build/secd-lisp $(SECD_LISP_DIR)/examples/ble-keyboard.lisp -t nrf52840-promicro --entry "BLE-KEYBOARD:MAIN" -o $(OUTPUT_DIR)/ble-keyboard-nrf52840.uf2
 
 .PHONY: nrf-examples

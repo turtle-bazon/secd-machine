@@ -15,6 +15,11 @@
 #include "usb.h"
 #include <string.h>
 
+/* SoftDevice bring-up (enables S140 at boot) and BLE event polling; both defined
+ * in nrf52840_ble.cpp and always linked into the unified image. */
+extern "C" void ble_sd_enable(void);
+extern "C" void hal_ble_poll(void);
+
 #ifndef SECD_MACHINE_VERSION
 #define SECD_MACHINE_VERSION "0.0.1.0"
 #endif
@@ -101,16 +106,23 @@ static int load_bytecode(secd_machine_t *m, secd_heap_t *h) {
 int main(void) {
     led_cfg();
 
+    /* Bring up the S140 SoftDevice first; it owns the clock + RAM bottom and
+     * forwards USBD/UARTE IRQs to our handlers. USB and BLE then coexist in one
+     * image (this is the whole point of the unified nRF52840 target). */
+    ble_sd_enable();
+
     secd_hal_init();
 
     secd_usb_init();
     secd_usb_start();
 
-    /* Wait for the host to open the CDC port (DTR) so the verbose boot log
-     * is actually delivered. */
+    /* Wait for the host to open the CDC port (DTR) so the verbose boot log is
+     * actually delivered. Also drain BLE events so a pairing started earlier is
+     * processed. */
     uint32_t console_wait_ms = 0;
     while (!secd_console_ready()) {
         secd_usb_task();
+        hal_ble_poll();
         hal_delay(1);
         if (++console_wait_ms > 10000u) break;
     }
@@ -119,8 +131,12 @@ int main(void) {
 
     secd_machine_boot(&machine, &heap, SECD_HEAP_OBJECTS, load_bytecode);
 
+    /* USB task + BLE event pump. For the keyboard examples the loaded Lisp
+     * program loops inside secd_execute (and itself polls BLE from %gpio-read),
+     * so this loop is normally reached only for non-Lisp / host interaction. */
     for (;;) {
         secd_usb_task();
+        hal_ble_poll();
         hal_delay(1);
         led_set(secd_console_ready());
     }

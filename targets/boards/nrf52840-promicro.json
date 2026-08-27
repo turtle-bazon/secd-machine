@@ -31,7 +31,8 @@
     "radio",
     "sleep",
     "uart",
-    "usb"
+    "usb",
+    "ble"
   ],
   "output": {
     "format": "uf2",

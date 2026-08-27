@@ -89,9 +89,15 @@ extern unsigned int __bss_end;
 extern unsigned int __app_base__;
 
 extern "C" void Reset_Handler(void) {
-    /* When loaded above the bootloader/SoftDevice (e.g. at 0x26000) the
-       vector table must be relocated from the default 0x00000000. */
+    /* When loaded above the bootloader (bare metal) the vector table must be
+       relocated from the default 0x00000000. Under the SoftDevice the SD owns
+       VTOR and we point it at our table via sd_softdevice_vector_table_base_set,
+       so do NOT write VTOR here (that would steal SVC/syscalls from the SD). */
+#ifndef SOFTDEVICE_PRESENT
     *(volatile uint32_t *)0xE000ED08 = (uint32_t)&__app_base__;
+#else
+    (void)&__app_base__;
+#endif
 
     unsigned int *src = &__data_load;
     unsigned int *dst = &__data_start;

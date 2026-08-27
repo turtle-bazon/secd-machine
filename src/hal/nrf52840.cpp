@@ -20,6 +20,10 @@
  * configured the device, so this is a safe no-op before enumeration. */
 extern "C" size_t secd_console_write(const uint8_t *data, size_t len);
 
+/* Declared in nrf52840_ble.cpp; used to drain SoftDevice events while the
+ * Lisp loop spins (the SD owns the vector table, so we must poll). */
+extern "C" void hal_ble_poll(void);
+
 #ifndef SECD_FEATURE_GPIO
 #define SECD_FEATURE_GPIO 0
 #endif
@@ -140,6 +144,7 @@ static inline uint32_t reg_read(uint32_t addr) {
 
 /* ------------------------------ Clock --------------------------------- */
 static void clock_init(void) {
+#ifndef SECD_FEATURE_BLE
     /* USBD requires HFXO: the USB driver gates on HFCLKSTAT reporting
      * Running|Xtal, and after a real reset (button/power) HFCLKSRC defaults
      * to the internal RC.  The source may only be switched while HFCLK is
@@ -165,6 +170,7 @@ static void clock_init(void) {
      * nRF52 implements only priority bits [7:4]: value 0x20 = level 2. */
     *(volatile uint8_t *)(0xE000ED23u) = 0x00u;       /* SysTick prio 0 (SHPR3.PRI_15) */
     *(volatile uint8_t *)(0xE000E400u + 39u) = 0x20u; /* USBD prio 2 */
+#endif
 }
 
 void secd_hal_init(void) {
@@ -180,8 +186,14 @@ void hal_free(void *p) { free(p); }
 
 uint32_t hal_millis(void) { return secd_systick_ms; }
 void hal_delay(uint32_t ms) {
+#ifdef SECD_FEATURE_BLE
+    /* SysTick is owned by the SoftDevice (its handler won't run in our
+     * context), so delay with a calibrated busy loop instead. */
+    for (volatile uint32_t i = 0; i < ms * 16000u; i++) {}
+#else
     uint32_t start = secd_systick_ms;
     while ((uint32_t)(secd_systick_ms - start) < ms) {}
+#endif
 }
 void hal_sleep(uint32_t ms) { hal_delay(ms); }
 
@@ -224,6 +236,9 @@ int hal_gpio_write(uint8_t pin, uint8_t value) {
 }
 
 int hal_gpio_read(uint8_t pin) {
+#ifdef SECD_FEATURE_BLE
+    hal_ble_poll();   /* drain SoftDevice events while the Lisp loop spins */
+#endif
     uint32_t in_reg = gpio_out_reg(pin) + 0x0Cu; /* IN at OUT+0x0C (0x510) */
     return (reg_read(in_reg) >> gpio_pin_idx(pin)) & 1u;
 }
@@ -539,13 +554,17 @@ int hal_radio_recv(uint8_t *out, size_t maxlen) {
 
 
 /* ------------------------------- BLE HID -------------------------------- */
-/* SoftDevice-based BLE HID deferred. Stubs for now so the build links;
- * %ble-* primitives return failure codes until real stack is added. */
+/* The real SoftDevice-based HID implementation lives in nrf52840_ble.cpp and
+ * is compiled into the BLE firmware variant (-DSECD_FEATURE_BLE=1). In the
+ * USB firmware we keep these stubs so the build still links and %ble-* calls
+ * fail gracefully. */
+#ifndef SECD_FEATURE_BLE
 int hal_ble_init(void) { return -1; }
 void hal_ble_set_name(const char *name) {}
 int hal_ble_connected(void) { return 0; }
 void hal_ble_key_report(uint8_t mods, const uint8_t keys[6]) {}
 void hal_ble_mouse_report(int8_t dx, int8_t dy, uint8_t btns) {}
+#endif
 
 /* ------------------------------- Flash ----------------------------------- */
 uint32_t hal_flash_size(void) { return 1024u * 1024u; }

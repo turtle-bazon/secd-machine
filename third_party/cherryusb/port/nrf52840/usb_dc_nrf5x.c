@@ -71,7 +71,9 @@ struct usbd_endpoint_cfg { uint8_t ep_addr; uint8_t ep_mps; uint8_t ep_type; };
 #define NRF_CLOCK ((NRF_CLOCK_Type *)NRF_CLOCK_BASE)
 #define NVIC ((NVIC_Type *)NVIC_BASE)
 
-#define USBD_IRQn 39
+/* USBD_IRQn is provided by CMSIS (core_cm4.h, pulled in under SOFTDEVICE_PRESENT
+ * via nrf.h) as an IRQn_Type enumerator (= 39). Do NOT redefine it here: a
+ * #define would corrupt the IRQn_Type enum definition. */
 
 #ifndef EP_ISO_MPS
 #define EP_ISO_MPS 64
@@ -1074,9 +1076,8 @@ static bool chyu_nrf52_errata_166(void)
 
 #ifdef SOFTDEVICE_PRESENT
 
-#include "nrf_mbr.h"
-#include "nrf_sdm.h"
-#include "nrf_soc.h"
+#define SECD_SD_NEED_NVIC
+#include "sd_shim.h"
 
 #ifndef SD_MAGIC_NUMBER
 #define SD_MAGIC_NUMBER 0x51B1E5DB
@@ -1314,7 +1315,11 @@ void cherry_usb_hal_nrf_power_event(uint32_t event)
 
     /*!< Enable interrupt, priorities should be set by application */
     /*!< clear pending irq */
+#ifdef SOFTDEVICE_PRESENT
+    (void)sd_nvic_ClearPendingIRQ((IRQn_Type)USBD_IRQn);
+#else
     NVIC->ICPR[(((uint32_t)USBD_IRQn) >> 5UL)] = (uint32_t)(1UL << (((uint32_t)USBD_IRQn) & 0x1FUL));
+#endif
     /**
      * Don't enable USBD interrupt yet, if dcd_init() did not finish yet
      * Interrupt will be enabled by tud_init(), when USB stack is ready
@@ -1344,7 +1349,11 @@ void cherry_usb_hal_nrf_power_event(uint32_t event)
       __DSB();
 
       /*!< Disable Interrupt */
+#ifdef SOFTDEVICE_PRESENT
+      (void)sd_nvic_DisableIRQ((IRQn_Type)USBD_IRQn);
+#else
       NVIC->ICER[(((uint32_t)USBD_IRQn) >> 5UL)] = (uint32_t)(1UL << (((uint32_t)USBD_IRQn) & 0x1FUL));
+#endif
       __DSB();
       __ISB();
       /*!< disable all interrupt */
