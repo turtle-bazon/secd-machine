@@ -120,8 +120,8 @@ extern "C" size_t secd_console_write(const uint8_t *data, size_t len);
 
 /* GPIO PIN_CNF fields */
 #define GPIO_CNF_DIR_OUT     (1u << 0)
-#define GPIO_CNF_INPUT_BUF   (1u << 1)
-#define GPIO_CNF_PULLUP      (3u << 2)  /* PULL=3 is pullup in PIN_CNF[3:2]=11 */
+#define GPIO_CNF_INPUT_BUF   (0u << 1)  /* bit1=0 CONNECTS input buffer (nRF52840 INPUT_Connect=0) */
+#define GPIO_CNF_PULLUP      (3u << 2)  /* PULL=3 (0b11) is pullup per nRF52840 bitfields */
 #define GPIO_CNF_PULL_NONE   (0u << 2)
 
 /* SysTick */
@@ -202,7 +202,12 @@ int hal_gpio_init(uint8_t pin, uint8_t mode) {
         /* Set DIR bit in OUTSET */
         reg_write(gpio_out_reg(pin) + 0x14u, 1u << gpio_pin_idx(pin)); /* DIRSET */
     } else {
-        /* Input: dir=Input(0), input buffer=Connect(1), pull-up */
+        /* Input: dir=Input(0), input buffer=Connect(1), pull-up.
+         * Must also force DIR=0 via DIRCLR: on nRF52840 the DIR register
+         * (not PIN_CNF.DIR) is authoritative, and if DIR[pin] is left at 1
+         * (output) the IN register reflects the output driver (0) and the
+         * pull-up is ignored, so gpio-read always returns 0. */
+        reg_write(gpio_out_reg(pin) + 0x18u, 1u << gpio_pin_idx(pin)); /* DIRCLR */
         reg_write(cnf_addr, GPIO_CNF_INPUT_BUF | GPIO_CNF_PULLUP);
     }
     return 0;

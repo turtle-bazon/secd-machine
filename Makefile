@@ -671,6 +671,7 @@ esp32s3-cardputer: $(OUTPUT_DIR)/stamp-s3a.machine
 nrf-examples: nrf52840-promicro
 	$(SECD_LISP_DIR)/build/secd-lisp $(SECD_LISP_DIR)/examples/usb-keyboard.lisp -t nrf52840-promicro --entry "USB-KEYBOARD:MAIN" -o $(OUTPUT_DIR)/usb-keyboard-nrf52840.uf2
 	$(SECD_LISP_DIR)/build/secd-lisp $(SECD_LISP_DIR)/examples/portable-blink.lisp -t nrf52840-promicro --entry "PORTABLE-BLINK:MAIN" -o $(OUTPUT_DIR)/portable-blink-nrf52840.uf2
+	$(SECD_LISP_DIR)/build/secd-lisp $(SECD_LISP_DIR)/examples/ble-keyboard.lisp -t nrf52840-promicro --entry "BLE-KEYBOARD:MAIN" -o $(OUTPUT_DIR)/ble-keyboard-nrf52840.uf2
 
 .PHONY: nrf-examples
 
