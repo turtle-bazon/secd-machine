@@ -189,6 +189,34 @@ $(NRF52840_DIR_RELEASE)/secd-machine.elf: $(NRF52840_SRCS)
 	$(call STM32-LINK,$(NRF52840_DIR_RELEASE),$(STM32_CC),$(NRF52840_CFLAGS_RELEASE),platforms/nrf52840/nrf52840-ble.ld,$(NRF52840_SRCS),$(NRF52840_LINKFLAGS))
 
 
+# nRF52840 RADIOTX diagnostic: bare-metal direct-RADIO BLE beacon with no
+# SoftDevice, no USB, no VM. Proves whether the nRF52840 RF front end on this
+# unit can transmit at all, independent of the S140.  Watch a phone scanner
+# for an "SDT" beacon; the LED (P0.15) toggles once per packet.
+# Built by flipping main.cpp's SECD_BLE_RADIOTX_TEST guard to #if 1 and
+# `make build/nrf52840-radiotx/firmware.uf2`.  Uses the regular nrf52840.ld
+# (no SD-driven RAM shift) and a CFLAGS variant without SOFTDEVICE_PRESENT.
+NRF52840_RADIOTX_DIR = build/nrf52840-radiotx
+NRF52840_RADIOTX_SRCS = platforms/nrf52840/main.cpp platforms/nrf52840/startup_nrf52840.cpp \
+	platforms/nrf52840/syscalls.cpp src/hal/nrf52840_ble.cpp
+NRF52840_RADIOTX_CFLAGS = -mcpu=cortex-m4 -mthumb -Os -ffunction-sections -fdata-sections \
+	-Wall -Wextra -Iinclude -DSECD_FEATURE_GPIO=1 -DSECD_DEBUG_BUILD=0 \
+	-DSECD_MACHINE_VERSION='"radiotx-0.0.0.0"' -DSECD_PLATFORM_NAME='"nRF52840 RADIOTX"' \
+	-DSECD_HEAP_OBJECTS=256 -DSECD_FEATURES_STR='"radiotx"' \
+	-DSECD_APP_BASE=$(NRF52840_APP_BASE) -DSECD_BLE_RADIOTX_TEST \
+	-Iplatforms/nrf52840 \
+	-Ithird_party/nordic/mdk -Ithird_party/nordic/hal -Ithird_party/cmsis \
+	-Ithird_party/nordic/s140/headers -Ithird_party/nordic/s140/headers/nrf52 \
+	-DNRF52840_XXAA -fpermissive
+$(NRF52840_RADIOTX_DIR)/secd-machine.elf: $(NRF52840_RADIOTX_SRCS)
+	$(call STM32-LINK,$(NRF52840_RADIOTX_DIR),$(STM32_CC),$(NRF52840_RADIOTX_CFLAGS),platforms/nrf52840/nrf52840.ld,$(NRF52840_RADIOTX_SRCS),$(NRF52840_LINKFLAGS))
+
+# UF2 packaging for the RADIOTX diagnostic (no .machine artifact, just a
+# raw UF2 the user can drop onto the bootloader). Uses the same Adafruit
+# nRF52 family ID as the production image.
+build/nrf52840-radiotx/firmware.uf2: build/nrf52840-radiotx/firmware.bin
+	@python3 tools/uf2.py $< $@ $(NRF52840_APP_BASE) $(NRF52840_UF2_FAMILY)
+
 
 
 

@@ -7,8 +7,11 @@
 extern "C" void Reset_Handler(void);
 extern "C" int main(void);
 extern "C" volatile uint32_t secd_systick_ms;
-
+#ifndef SECD_BLE_RADIOTX_TEST
 extern "C" void SysTick_Handler(void) { secd_systick_ms++; }
+#endif
+/* In the RADIOTX diagnostic we don't link a USB stack, so the SysTick ticker
+ * is not driven; that's fine because nothing in that image reads it. */
 
 /* Any unexpected IRQ/handler lands here LOUD: a silent spin is
  * indistinguishable from a healthy idle on the LED. */
@@ -50,7 +53,13 @@ extern "C" void UsageFault_Handler(void) __attribute__((alias("HardFault_Handler
 WEAK_DEFAULT(DebugMon_Handler); WEAK_DEFAULT(PendSV_Handler);
 
 extern "C" void USBD_IRQHandler(uint8_t busid);
+#ifndef SECD_BLE_RADIOTX_TEST
 extern "C" void USBD_Handler(void) { USBD_IRQHandler(0); }
+#endif
+/* In the RADIOTX diagnostic USBD_Handler is dead code (no USB stack linked),
+ * so its weak alias to USBD_IRQHandler is omitted.  The vector table below
+ * still points at USBD_Handler for the production image; for the RADIOTX
+ * image we replace it with Default_Handler. */
 
 typedef void (*vector_fn)(void);
 extern unsigned int __stack_top__;
@@ -65,7 +74,12 @@ const vector_fn __isr_vector[16 + 48] = {
     Default_Handler, Default_Handler, Default_Handler, /* 7-9 rsvd */
     Default_Handler,                                   /* 10 rsvd */
     SVCall_Handler, DebugMon_Handler,                  /* 11-12 */
-    Default_Handler, PendSV_Handler, SysTick_Handler,   /* 13-15 */
+    Default_Handler, PendSV_Handler,
+#ifdef SECD_BLE_RADIOTX_TEST
+    Default_Handler,                                 /* no SysTick in RADIOTX */
+#else
+    SysTick_Handler,
+#endif
     /* External IRQs 0..47 (all polled, trap on fire) */
     Default_Handler, Default_Handler, Default_Handler, Default_Handler,
     Default_Handler, Default_Handler, Default_Handler, Default_Handler,
@@ -76,7 +90,12 @@ const vector_fn __isr_vector[16 + 48] = {
     Default_Handler, Default_Handler, Default_Handler, Default_Handler,
     Default_Handler, Default_Handler, Default_Handler, Default_Handler,
     Default_Handler, Default_Handler, Default_Handler, Default_Handler,
-    Default_Handler, Default_Handler, Default_Handler, USBD_Handler,
+    Default_Handler, Default_Handler, Default_Handler,
+#ifdef SECD_BLE_RADIOTX_TEST
+    Default_Handler,                                /* no USB in RADIOTX */
+#else
+    USBD_Handler,
+#endif
     Default_Handler, Default_Handler, Default_Handler, Default_Handler,
     Default_Handler, Default_Handler, Default_Handler, Default_Handler
 };

@@ -78,7 +78,18 @@ SECTIONS
     __bss_end = .;
   } > RAM
 
-  __heap_start = __bss_end;
+  /* RAM that survives warm reset (neither copied from flash nor zeroed):
+   * used to carry the SoftDevice fault record across the SD's auto-reset. */
+  .noinit (NOLOAD) :
+  {
+    . = ALIGN(4);
+    __noinit_start = .;
+    *(.noinit .noinit.*)
+    . = ALIGN(4);
+    __noinit_end = .;
+  } > RAM
+
+  __heap_start = __noinit_end;
   __heap_end = __ram_end__;
 
   /DISCARD/ :
