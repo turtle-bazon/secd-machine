@@ -418,3 +418,64 @@ int secd_bytevec_write(secd_heap_t *heap, uint16_t slot, uint16_t index, uint8_t
     ((uint8_t*)v->data)[index] = byte;
     return 0;
 }
+
+/*
+ * Bignum: boxed wide integer.
+ *
+ * Representation: a heap object of type SECD_TYPE_BIGNUM whose car holds
+ * the sign (0 = positive/zero, 1 = negative) and cdr holds the bytevec
+ * descriptor slot for the magnitude (little-endian base 256; canonical
+ * zero is the single byte 0x00). Up to SECD_BYTEVEC_MAX bignums can
+ * coexist; the bignum's magnitude bytevec counts against SECD_BYTEVEC_ARENA.
+ *
+ * This is just enough for VID/PID (2-byte magnitudes) and other 16- to
+ * 24-bit constants emitted by OP_LDCW. Full arbitrary-precision arithmetic
+ * is not implemented here.
+ */
+secd_value_t secd_make_bignum_from_bytes(secd_heap_t *heap, const uint8_t *bytes, uint16_t n) {
+    if (!heap || !bytes || n == 0) return SECD_NIL;
+    /* Strip leading zeros so the canonical form is the smallest bytevec
+     * that uniquely represents the value (e.g. 0x0012 -> 0x12). */
+    while (n > 1 && bytes[n - 1] == 0) n--;
+    uint16_t slot = secd_bytevec_alloc(heap, n);
+    if (slot == SECD_BYTEVEC_INVALID) return SECD_NIL;
+    for (uint16_t i = 0; i < n; i++) {
+        if (secd_bytevec_write(heap, slot, i, bytes[i]) != 0) return SECD_NIL;
+    }
+    uint16_t idx = secd_heap_alloc(heap, SECD_TYPE_BIGNUM);
+    if (idx == 0) return SECD_NIL;
+    secd_object_t *obj = secd_heap_get(heap, idx);
+    if (!obj) return SECD_NIL;
+    obj->car = 0;                          /* sign = positive */
+    obj->cdr = (secd_value_t)slot;
+    return secd_make_handle(SECD_TYPE_BIGNUM, idx);
+}
+
+/* Read a bignum's magnitude into a uint32. Returns the byte count actually
+ * read (capped at 4, low bytes only); 0 if val is not a bignum or the
+ * magnitude is empty. Higher bytes are silently truncated. */
+uint32_t secd_bignum_to_uint32(secd_heap_t *heap, secd_value_t val) {
+    if (!secd_is_bignum(val)) return 0;
+    secd_object_t *obj = secd_heap_get(heap, secd_get_index(val));
+    if (!obj) return 0;
+    secd_bytevec_t *mag = secd_bytevec_get(heap, (uint16_t)obj->cdr);
+    if (!mag || !mag->data) return 0;
+    uint32_t r = 0;
+    uint16_t n = mag->len > 4 ? 4 : mag->len;
+    for (uint16_t i = 0; i < n; i++) {
+        r |= ((uint32_t)mag->data[i]) << (i * 8);
+    }
+    return r;
+}
+
+/* Mark a bignum's magnitude bytevec as reachable. Called from mark_object
+ * when the BIGNUM heap object is reached. */
+void secd_bignum_mark(secd_heap_t *heap, secd_value_t val) {
+    if (!secd_is_bignum(val)) return;
+    secd_object_t *obj = secd_heap_get(heap, secd_get_index(val));
+    if (!obj) return;
+    uint16_t slot = (uint16_t)obj->cdr;
+    if (slot < SECD_BYTEVEC_MAX * 64) { /* cheap guard */
+        heap->bytevec_marks |= ((uint64_t)1 << slot);
+    }
+}

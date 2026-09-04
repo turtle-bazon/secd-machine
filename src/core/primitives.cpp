@@ -376,6 +376,57 @@ secd_value_t prim_usb_mouse_add(secd_heap_t *heap, secd_value_t args) {
     return secd_make_fixnum((int16_t)hal_usb_mouse_add());
 }
 
+/* Read a 16-bit unsigned value from a value that may be a fixnum or a
+ * bignum. Fixnums cover the typical case; bignums (from OP_LDCW) cover
+ * the full 16-bit range. */
+static uint16_t value_to_uint16(secd_heap_t *heap, secd_value_t val) {
+    if (secd_is_bignum(val)) {
+        return (uint16_t)secd_bignum_to_uint32(heap, val);
+    }
+    return (uint16_t)(int16_t)secd_fixnum_value(val);
+}
+
+secd_value_t prim_usb_vid_pid(secd_heap_t *heap, secd_value_t args) {
+    uint16_t vid = value_to_uint16(heap, get_arg1(heap, args));
+    uint16_t pid = value_to_uint16(heap, get_arg2(heap, args));
+    hal_usb_set_vid(vid);
+    hal_usb_set_pid(pid);
+    return SECD_NIL;
+}
+
+/* Common helper: pull a NUL-terminated C string out of a byte-vector arg.
+ * Truncates to SECD_USB_STR_MAX (32 incl. NUL). */
+static const char *extract_cstr(secd_heap_t *heap, secd_value_t arg, char *tmp, size_t cap) {
+    if (!secd_is_bytevec(arg)) { tmp[0] = '\0'; return tmp; }
+    secd_bytevec_t *v = secd_bytevec_get(heap, secd_get_index(arg));
+    if (!v) { tmp[0] = '\0'; return tmp; }
+    size_t n = v->len < cap - 1 ? v->len : cap - 1;
+    memcpy(tmp, v->data, n);
+    tmp[n] = '\0';
+    return tmp;
+}
+
+secd_value_t prim_usb_vendor(secd_heap_t *heap, secd_value_t args) {
+    char buf[SECD_USB_STR_MAX + 1];
+    const char *s = extract_cstr(heap, get_arg1(heap, args), buf, sizeof(buf));
+    hal_usb_set_manufacturer(s);
+    return SECD_NIL;
+}
+
+secd_value_t prim_usb_product(secd_heap_t *heap, secd_value_t args) {
+    char buf[SECD_USB_STR_MAX + 1];
+    const char *s = extract_cstr(heap, get_arg1(heap, args), buf, sizeof(buf));
+    hal_usb_set_product(s);
+    return SECD_NIL;
+}
+
+secd_value_t prim_usb_serial(secd_heap_t *heap, secd_value_t args) {
+    char buf[SECD_USB_STR_MAX + 1];
+    const char *s = extract_cstr(heap, get_arg1(heap, args), buf, sizeof(buf));
+    hal_usb_set_serial(s);
+    return SECD_NIL;
+}
+
 secd_value_t prim_hid_key(secd_heap_t *heap, secd_value_t args) {
     uint8_t modifier = (uint8_t)secd_fixnum_value(get_arg1(heap, args));
     uint8_t usage = (uint8_t)secd_fixnum_value(get_arg2(heap, args));
@@ -538,5 +589,11 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
     /* Must be sorted by name for lookups and appears after %hid-mouse;
        ids on S3: %usb-hid-mouse-add = 40, %hid-mouse = 39. */
     secd_register_prim(registry, "%usb-hid-mouse-add", prim_usb_mouse_add);
+    /* VID/PID and string descriptors (default: 0xFFFF/0x0001, "SECD" /
+       "SECD Machine"). All must be called before %usb-start. */
+    secd_register_prim(registry, "%usb-vid-pid", prim_usb_vid_pid);
+    secd_register_prim(registry, "%usb-vendor", prim_usb_vendor);
+    secd_register_prim(registry, "%usb-product", prim_usb_product);
+    secd_register_prim(registry, "%usb-serial", prim_usb_serial);
 #endif
 }

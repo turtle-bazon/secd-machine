@@ -46,7 +46,10 @@ typedef enum {
     OP_LDC   = 0x02,  /* Load constant: push value */
     OP_LDF   = 0x03,  /* Load function: push closure */
     OP_LDE   = 0x04,  /* Load environment: push current env */
-    
+    OP_LDCW  = 0x05,  /* Load constant wide: 3-byte LE operand materialises
+                         a BIGNUM on the stack. Used for integer literals
+                         outside the 12-bit fixnum range (-2048..2047). */
+
     /* Arithmetic operations */
     OP_ADD   = 0x10,  /* Add */
     OP_SUB   = 0x11,  /* Subtract */

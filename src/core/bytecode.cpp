@@ -85,6 +85,10 @@ int secd_inst_length(uint8_t opcode) {
         case OP_JMP:
             return 3;
         
+        /* 4-byte instructions */
+        case OP_LDCW:
+            return 4;
+        
         default:
             return 1;
     }
@@ -194,6 +198,38 @@ int secd_execute(secd_machine_t *machine, const uint8_t *bytecode, size_t length
                     return -1;
                 }
                 ip += 3;
+                break;
+            }
+            
+            case OP_LDCW: {
+                /* Load constant wide: 3-byte LE operand materialises a
+                 * BIGNUM on the stack. Used for integer literals that
+                 * don't fit in the 12-bit fixnum range (e.g. 0x1209 for
+                 * USB VID). The bignum's magnitude is up to 3 bytes LE. */
+                uint32_t value = (uint32_t)bytecode[ip + 1]
+                                | ((uint32_t)bytecode[ip + 2] << 8)
+                                | ((uint32_t)bytecode[ip + 3] << 16);
+                if (value <= 0x7FF) {
+                    /* Small enough to be a fixnum; promote to LDC by hand. */
+                    if (secd_push(machine, secd_make_fixnum((int16_t)value)) != 0) {
+                        return -1;
+                    }
+                } else {
+                    uint8_t mag[3] = {
+                        (uint8_t)(value & 0xFF),
+                        (uint8_t)((value >> 8) & 0xFF),
+                        (uint8_t)((value >> 16) & 0xFF)
+                    };
+                    secd_value_t bn = secd_make_bignum_from_bytes(machine->heap, mag, 3);
+                    if (bn == SECD_NIL) {
+                        secd_set_error(machine, SECD_ERROR_HEAP_FULL);
+                        return -1;
+                    }
+                    if (secd_push(machine, bn) != 0) {
+                        return -1;
+                    }
+                }
+                ip += 4;
                 break;
             }
             

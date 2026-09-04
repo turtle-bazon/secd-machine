@@ -173,6 +173,22 @@ int secd_bytevec_read(secd_heap_t *heap, uint16_t slot, uint16_t index);
    read-only (ROM) vector. */
 int secd_bytevec_write(secd_heap_t *heap, uint16_t slot, uint16_t index, uint8_t byte);
 
+/*
+ * Bignum operations (boxed wide integers; magnitude is a writable
+ * bytevec, sign lives in the heap object's car).
+ */
+
+/* Make a BIGNUM from LE magnitude BYTES[0..N). Returns SECD_NIL on
+ * allocation failure. Leading zeros are stripped. */
+secd_value_t secd_make_bignum_from_bytes(secd_heap_t *heap, const uint8_t *bytes, uint16_t n);
+
+/* Read the bignum's magnitude as a uint32 (low 4 bytes, LE). Returns
+ * 0 if val isn't a bignum. */
+uint32_t secd_bignum_to_uint32(secd_heap_t *heap, secd_value_t val);
+
+/* Mark a bignum's magnitude bytevec as GC-reachable. */
+void secd_bignum_mark(secd_heap_t *heap, secd_value_t val);
+
 #endif /* SECD_HEAP_H */
 
 #ifdef __cplusplus

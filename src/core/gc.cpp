@@ -84,11 +84,10 @@ static void mark_object(secd_heap_t *heap, secd_value_t val) {
         }
         
         case SECD_TYPE_BIGNUM: {
-            /* Bignum contains pointer to data (stored in car as handle) */
-            secd_object_t *obj = secd_heap_get(heap, index);
-            if (obj) {
-                mark_object(heap, obj->car);
-            }
+            /* Bignum v2: heap object car=sign (0/1), cdr=bytevec descriptor
+             * slot for the magnitude. Mark the magnitude bytevec so the
+             * sweep keeps it alive. */
+            secd_bignum_mark(heap, val);
             break;
         }
         
