@@ -386,11 +386,13 @@ static uint16_t value_to_uint16(secd_heap_t *heap, secd_value_t val) {
     return (uint16_t)(int16_t)secd_fixnum_value(val);
 }
 
-secd_value_t prim_usb_vid_pid(secd_heap_t *heap, secd_value_t args) {
-    uint16_t vid = value_to_uint16(heap, get_arg1(heap, args));
-    uint16_t pid = value_to_uint16(heap, get_arg2(heap, args));
-    hal_usb_set_vid(vid);
-    hal_usb_set_pid(pid);
+secd_value_t prim_usb_vid(secd_heap_t *heap, secd_value_t args) {
+    hal_usb_set_vid(value_to_uint16(heap, get_arg1(heap, args)));
+    return SECD_NIL;
+}
+
+secd_value_t prim_usb_pid(secd_heap_t *heap, secd_value_t args) {
+    hal_usb_set_pid(value_to_uint16(heap, get_arg1(heap, args)));
     return SECD_NIL;
 }
 
@@ -591,7 +593,8 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
     secd_register_prim(registry, "%usb-hid-mouse-add", prim_usb_mouse_add);
     /* VID/PID and string descriptors (default: 0xFFFF/0x0001, "SECD" /
        "SECD Machine"). All must be called before %usb-start. */
-    secd_register_prim(registry, "%usb-vid-pid", prim_usb_vid_pid);
+    secd_register_prim(registry, "%usb-vid", prim_usb_vid);
+    secd_register_prim(registry, "%usb-pid", prim_usb_pid);
     secd_register_prim(registry, "%usb-vendor", prim_usb_vendor);
     secd_register_prim(registry, "%usb-product", prim_usb_product);
     secd_register_prim(registry, "%usb-serial", prim_usb_serial);

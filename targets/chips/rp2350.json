@@ -49,10 +49,11 @@
         "%serial-write": {"id": 35, "args": 2},
         "%serial-read": {"id": 36, "args": 1},
         "%serial-avail": {"id": 37, "args": 1},
-        "%usb-vid-pid": {"id": 38, "args": 2},
-        "%usb-vendor": {"id": 39, "args": 1},
-        "%usb-product": {"id": 40, "args": 1},
-        "%usb-serial": {"id": 41, "args": 1}
+        "%usb-vid": {"id": 38, "args": 1},
+        "%usb-pid": {"id": 39, "args": 1},
+        "%usb-vendor": {"id": 40, "args": 1},
+        "%usb-product": {"id": 41, "args": 1},
+        "%usb-serial": {"id": 42, "args": 1}
     },
     "usb": {
         "device": true,
