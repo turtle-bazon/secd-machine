@@ -51,7 +51,11 @@
         "%serial-avail": {"id": 37, "args": 1},
         "%i2c-write-v": {"id": 38, "args": 3},
         "%hid-mouse": {"id": 39, "args": 4},
-        "%usb-hid-mouse-add": {"id": 40, "args": 0}
+        "%usb-hid-mouse-add": {"id": 40, "args": 0},
+        "%usb-vid-pid": {"id": 41, "args": 2},
+        "%usb-vendor": {"id": 42, "args": 1},
+        "%usb-product": {"id": 43, "args": 1},
+        "%usb-serial": {"id": 44, "args": 1}
     },
     "usb": {
         "device": true,

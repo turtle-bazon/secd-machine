@@ -77,9 +77,26 @@ static volatile bool    s_hid = false;
 static volatile bool    s_mouse = false;
 static volatile bool    s_started = false;
 
+/* VID/PID and the three product strings are settable from Lisp via
+ * %usb-vid-pid / %usb-vendor / %usb-product before %usb-start. */
+static volatile uint16_t s_vid = 0xFFFF;
+static volatile uint16_t s_pid = 0x0001;
+#define SECD_USB_STR_MAX 31
+static char s_usb_manufacturer[SECD_USB_STR_MAX + 1] = "SECD";
+static char s_usb_product     [SECD_USB_STR_MAX + 1] = "SECD Machine";
+static char s_usb_serial      [SECD_USB_STR_MAX + 1] = "000000000001";
+
 /* ---------------------------------------------------------------- descriptors */
-static const uint8_t device_descriptor[] = {
-    USB_DEVICE_DESCRIPTOR_INIT(USB_2_0, 0x00, 0x00, 0x00, USBD_VID, USBD_PID, 0x0001, 0x01)};
+/* Built fresh at secd_usb_start() from s_vid/s_pid (little-endian uint16
+ * at offsets 8 and 10). bcdDevice, iManufacturer, iProduct, iSerial and
+ * bNumConfigurations are fixed and never change. */
+alignas(4) static uint8_t device_descriptor[18] = {
+    0x12, USB_DESCRIPTOR_TYPE_DEVICE, 0x00, 0x02,   /* bLength, type, bcdUSB */
+    0x00, 0x00, 0x00, 0x40,                          /* class/sub/proto, EP0 MPS */
+    0xFF, 0xFF,                                      /* idVendor (patched in start) */
+    0x01, 0x00,                                      /* idProduct (patched in start) */
+    0x01, 0x00, 0x01, 0x02, 0x03, 0x01               /* bcdDevice, iMfg, iProd, iSer, bNumCfg */
+};
 
 /* One CDC-ACM bridge descriptor per supported port (66 bytes each). */
 static const uint8_t acm_desc[SECD_USB_MAX_PORTS][CDC_ACM_DESCRIPTOR_LEN] = {
@@ -123,12 +140,29 @@ static const uint8_t hid_mouse_desc[HID_MOUSE_DESCRIPTOR_LEN] = {
     HID_MOUSE_DESCRIPTOR_INIT(0, 0x01, HID_MOUSE_REPORT_DESC_SIZE,
                               HID_MOUSE_EP, HID_MOUSE_EP_SIZE, HID_MOUSE_EP_INTERVAL)};
 
-static const char *string_descriptors[] = {
-    (const char[]){0x09, 0x04}, /* LangID */
-    "SECD",                     /* Manufacturer */
-    "SECD Machine",             /* Product */
-    "000000000001",             /* Serial */
-};
+/* USB string descriptors are UTF-16LE, prefixed by a 2-byte length+type
+ * header. Packed lazily the first time secd_usb_start runs; 64 bytes per
+ * string covers a 31-char payload. */
+static uint8_t  string_buf[4][64];
+static uint8_t  string_len[4] = {0, 0, 0, 0};
+static const char *string_descriptors[4] = {NULL, NULL, NULL, NULL};
+
+static void pack_string(uint8_t i, const char *s)
+{
+    size_t n = strnlen(s, SECD_USB_STR_MAX);
+    uint8_t hdr[2] = { (uint8_t)(2 + n * 2), 0x03 };
+    memcpy(string_buf[i], hdr, 2);
+    for (size_t k = 0; k < n; k++) string_buf[i][2 + k * 2] = (uint8_t)s[k];
+    string_descriptors[i] = (const char *)string_buf[i];
+}
+
+static void build_strings(void)
+{
+    pack_string(0, "\x09\x04");   /* LangID descriptor: English (US), 0x0409 */
+    pack_string(1, s_usb_manufacturer);
+    pack_string(2, s_usb_product);
+    pack_string(3, s_usb_serial);
+}
 
 static uint8_t config_buf[9 + CDC_ACM_DESCRIPTOR_LEN * SECD_USB_MAX_PORTS +
                           HID_KEYBOARD_DESCRIPTOR_LEN +
@@ -344,10 +378,22 @@ int secd_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel)
 void secd_usb_start(void)
 {
     if (s_started) return;
+    /* Refresh VID/PID in the device descriptor (LE uint16 at offsets 8 / 10). */
+    device_descriptor[8]  = (uint8_t)(s_vid & 0xFF);
+    device_descriptor[9]  = (uint8_t)(s_vid >> 8);
+    device_descriptor[10] = (uint8_t)(s_pid & 0xFF);
+    device_descriptor[11] = (uint8_t)(s_pid >> 8);
+    build_strings();
     build_config_descriptor();
     usbd_initialize(0, 0, secd_usbd_event);
     s_started = true;
 }
+
+void secd_usb_set_vid(uint16_t vid) { if (!s_started) s_vid = vid; }
+void secd_usb_set_pid(uint16_t pid) { if (!s_started) s_pid = pid; }
+void secd_usb_set_manufacturer(const char *s) { if (!s_started) strncpy(s_usb_manufacturer, s, SECD_USB_STR_MAX); s_usb_manufacturer[SECD_USB_STR_MAX] = '\0'; }
+void secd_usb_set_product(const char *s)      { if (!s_started) strncpy(s_usb_product,      s, SECD_USB_STR_MAX); s_usb_product[SECD_USB_STR_MAX]      = '\0'; }
+void secd_usb_set_serial(const char *s)       { if (!s_started) strncpy(s_usb_serial,       s, SECD_USB_STR_MAX); s_usb_serial[SECD_USB_STR_MAX]       = '\0'; }
 
 bool secd_usb_configured(void)
 {

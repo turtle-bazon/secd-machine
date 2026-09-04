@@ -22,6 +22,18 @@ extern "C" {
 /* Register the device + console (call before any add). */
 void secd_usb_init(void);
 
+/* Override the device descriptor VID/PID. Must be called before
+ * secd_usb_start() and after secd_usb_init(). */
+void secd_usb_set_vid(uint16_t vid);
+void secd_usb_set_pid(uint16_t pid);
+
+/* Override the iManufacturer / iProduct / iSerial string descriptors.
+ * Truncated to 31 UTF-16 chars (USB spec limit). Must be called before
+ * secd_usb_start(). */
+void secd_usb_set_manufacturer(const char *s);
+void secd_usb_set_product(const char *s);
+void secd_usb_set_serial(const char *s);
+
 /* Add a Lisp serial console; returns its port index (>=1) or -1 (full/started). */
 int secd_usb_serial_add(void);
 

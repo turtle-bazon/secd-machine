@@ -115,9 +115,40 @@ static volatile bool    s_hid = false;
 static volatile bool    s_mouse = false;
 static volatile bool    s_started = false;
 
+/* VID/PID and the three product strings are settable from Lisp via
+ * %usb-vid-pid / %usb-vendor / %usb-product before %usb-start. Default
+ * values match the placeholder used in the original CherryUSB demo. */
+static volatile uint16_t s_vid = 0xFFFF;
+static volatile uint16_t s_pid = 0x0001;
+#define SECD_USB_STR_MAX 31   /* USB string descriptor caps at 31 UTF-16 chars */
+static char s_usb_manufacturer[SECD_USB_STR_MAX + 1] = "SECD";
+static char s_usb_product     [SECD_USB_STR_MAX + 1] = "SECD Machine";
+static char s_usb_serial      [SECD_USB_STR_MAX + 1] = "000000000001";
+
 /* ---------------------------------------------------------------- descriptors */
-static const uint8_t device_descriptor[] = {
-    USB_DEVICE_DESCRIPTOR_INIT(USB_2_0, 0x00, 0x00, 0x00, USBD_VID, USBD_PID, 0x0001, 0x01)};
+/* Built fresh at secd_usb_start() from s_vid/s_pid. The structure is the same
+ * byte layout USB_DEVICE_DESCRIPTOR_INIT(USB_2_0, 0x00, 0x00, 0x00, vid, pid,
+ * 0x0001, 0x01) emits — VID/PID are little-endian uint16 at offsets 8 / 10.
+ * bcdDevice, iManufacturer, iProduct, iSerial and bNumConfigurations are
+ * fixed in this layout and never change. */
+alignas(4) static uint8_t device_descriptor[18] = {
+    0x12, USB_DESCRIPTOR_TYPE_DEVICE, 0x00, 0x02,   /* bLength, type, bcdUSB */
+    0x00, 0x00, 0x00, 0x40,                          /* class/sub/proto, EP0 MPS */
+    0xFF, 0xFF,                                      /* idVendor (patched in start) */
+    0x01, 0x00,                                      /* idProduct (patched in start) */
+    0x01, 0x00, 0x01, 0x02, 0x03, 0x01               /* bcdDevice, iMfg, iProd, iSer, bNumCfg */
+};
+
+/* USB string descriptors are UTF-16LE, prefixed by a 2-byte length+type
+ * header (bLength, bDescriptorType=0x03). We pack them lazily the first time
+ * the host asks for them, then cache the result. 64 bytes covers a 31-char
+ * string (header 2 + 62 UTF-16LE bytes). */
+static uint8_t  string_buf[4][64];
+static uint8_t  string_len[4] = {0, 0, 0, 0};
+static bool     string_built = false;
+
+static const char *string_descriptors[4] = {NULL, NULL, NULL, NULL};
+static const char *string_descriptor_cb(uint8_t speed, uint8_t index);
 
 /* One CDC-ACM bridge descriptor per supported port (66 bytes each). */
 static const uint8_t acm_desc[SECD_USB_MAX_PORTS][CDC_ACM_DESCRIPTOR_LEN] = {
@@ -156,12 +187,28 @@ static const uint8_t hid_mouse_desc[HID_MOUSE_DESCRIPTOR_LEN] = {
     HID_MOUSE_DESCRIPTOR_INIT(0, 0x01, HID_MOUSE_REPORT_DESC_SIZE,
                               HID_MOUSE_EP, HID_MOUSE_EP_SIZE, HID_MOUSE_EP_INTERVAL)};
 
-static const char *string_descriptors[] = {
-    (const char[]){0x09, 0x04}, /* Langid */
-    "SECD",                     /* Manufacturer */
-    "SECD Machine",             /* Product */
-    "000000000001",             /* Serial */
-};
+/* ----------------------------------------------------- USB string packing */
+/* Pack a C string into a USB string descriptor (UTF-16LE, 2-byte length
+ * header). Truncates to fit in 62 bytes of payload (31 chars). Updates
+ * string_buf[i] / string_len[i] and points string_descriptors[i] at it. */
+static void pack_string(uint8_t i, const char *s)
+{
+    size_t n = strnlen(s, SECD_USB_STR_MAX);
+    uint8_t hdr[2] = { (uint8_t)(2 + n * 2), 0x03 };
+    memcpy(string_buf[i], hdr, 2);
+    for (size_t k = 0; k < n; k++) string_buf[i][2 + k * 2] = (uint8_t)s[k];
+    string_len[i] = (uint8_t)(2 + n * 2);
+    string_descriptors[i] = (const char *)string_buf[i];
+}
+
+static void build_strings(void)
+{
+    pack_string(0, "\x09\x04");   /* LangID descriptor: English (US), 0x0409 */
+    pack_string(1, s_usb_manufacturer);
+    pack_string(2, s_usb_product);
+    pack_string(3, s_usb_serial);
+    string_built = true;
+}
 
 /* DMA-aligned: the DWC2 glue copies from/to DRAM and requires data buffers to
  * be 4-byte aligned (CONFIG_USB_ALIGN_SIZE). */
@@ -370,10 +417,24 @@ int secd_usb_mouse_add(void)
 void secd_usb_start(void)
 {
     if (s_started) return;
+    /* Refresh VID/PID in the device descriptor. The structure is the same
+     * byte layout USB_DEVICE_DESCRIPTOR_INIT emits, so we can write VID at
+     * offset 8 and PID at offset 10 (both little-endian uint16). */
+    device_descriptor[8]  = (uint8_t)(s_vid & 0xFF);
+    device_descriptor[9]  = (uint8_t)(s_vid >> 8);
+    device_descriptor[10] = (uint8_t)(s_pid & 0xFF);
+    device_descriptor[11] = (uint8_t)(s_pid >> 8);
+    build_strings();
     build_config_descriptor();
     usbd_initialize(0, ESP_USBD_BASE, secd_usbd_event);
     s_started = true;
 }
+
+void secd_usb_set_vid(uint16_t vid) { if (!s_started) s_vid = vid; }
+void secd_usb_set_pid(uint16_t pid) { if (!s_started) s_pid = pid; }
+void secd_usb_set_manufacturer(const char *s) { if (!s_started) strncpy(s_usb_manufacturer, s, SECD_USB_STR_MAX); s_usb_manufacturer[SECD_USB_STR_MAX] = '\0'; }
+void secd_usb_set_product(const char *s)      { if (!s_started) strncpy(s_usb_product,      s, SECD_USB_STR_MAX); s_usb_product[SECD_USB_STR_MAX]      = '\0'; }
+void secd_usb_set_serial(const char *s)       { if (!s_started) strncpy(s_usb_serial,       s, SECD_USB_STR_MAX); s_usb_serial[SECD_USB_STR_MAX]       = '\0'; }
 
 bool secd_usb_configured(void)
 {

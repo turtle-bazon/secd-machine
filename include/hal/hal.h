@@ -95,12 +95,21 @@ void hal_print_int(int32_t value);
 #ifndef SECD_FEATURE_HID
 #define SECD_FEATURE_HID 0
 #endif
+/* USB string descriptor cap (UTF-16 chars; +1 for the trailing NUL the C
+ * side stores). 31 is the USB-IF limit, and matches what the firmware uses
+ * internally for iManufacturer / iProduct / iSerial. */
+#define SECD_USB_STR_MAX 31
 #if SECD_FEATURE_HID
 void hal_usb_init(void);
 void hal_usb_start(void);
 int  hal_usb_serial_add(void);
 int  hal_usb_hid_add(void);
 int  hal_usb_mouse_add(void);
+void hal_usb_set_vid(uint16_t vid);
+void hal_usb_set_pid(uint16_t pid);
+void hal_usb_set_manufacturer(const char *s);
+void hal_usb_set_product(const char *s);
+void hal_usb_set_serial(const char *s);
 void hal_hid_keyboard_tap(uint8_t modifier, uint8_t usage);
 int  hal_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel);
 int  hal_usb_serial_write(int port, uint8_t byte);

@@ -257,6 +257,12 @@ int hal_usb_mouse_add(void) {
     return secd_usb_mouse_add();
 }
 
+void hal_usb_set_vid(uint16_t vid) { secd_usb_set_vid(vid); }
+void hal_usb_set_pid(uint16_t pid) { secd_usb_set_pid(pid); }
+void hal_usb_set_manufacturer(const char *s) { secd_usb_set_manufacturer(s); }
+void hal_usb_set_product(const char *s)      { secd_usb_set_product(s); }
+void hal_usb_set_serial(const char *s)       { secd_usb_set_serial(s); }
+
 void hal_hid_keyboard_tap(uint8_t modifier, uint8_t usage) {
     secd_hid_keyboard_tap(modifier, usage);
 }
