@@ -45,13 +45,13 @@
         "%usb-init": {"id": 31, "args": 0},
         "%usb-start": {"id": 32, "args": 0},
         "%usb-serial-add": {"id": 33, "args": 0},
-        "%usb-hid-add": {"id": 34, "args": 0},
+        "%usb-hid-keyboard-add": {"id": 34, "args": 0},
         "%serial-write": {"id": 35, "args": 2},
         "%serial-read": {"id": 36, "args": 1},
         "%serial-avail": {"id": 37, "args": 1},
         "%i2c-write-v": {"id": 38, "args": 3},
         "%hid-mouse": {"id": 39, "args": 4},
-        "%usb-mouse-add": {"id": 40, "args": 0}
+        "%usb-hid-mouse-add": {"id": 40, "args": 0}
     },
     "usb": {
         "device": true,

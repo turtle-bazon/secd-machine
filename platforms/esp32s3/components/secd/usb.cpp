@@ -6,7 +6,7 @@
  * (Lisp: %usb-start) runs, so all interfaces must be added beforehand:
  *     %usb-init          -> secd_usb_init():      register descriptor + console
  *     %usb-serial-add    -> secd_usb_serial_add():add a CDC-ACM serial port
- *     %usb-hid-add       -> secd_usb_hid_add():   add the HID keyboard
+ *     %usb-hid-keyboard-add -> secd_usb_hid_add():   add the HID keyboard
  *     %usb-start         -> secd_usb_start():     freeze + enumerate
  *
  * The CDC-ACM console (SECD print/format, port 0) is always present. The

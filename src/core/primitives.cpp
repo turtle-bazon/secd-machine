@@ -520,7 +520,7 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
     secd_register_prim(registry, "%usb-init", prim_usb_init);
     secd_register_prim(registry, "%usb-start", prim_usb_start);
     secd_register_prim(registry, "%usb-serial-add", prim_usb_serial_add);
-    secd_register_prim(registry, "%usb-hid-add", prim_usb_hid_add);
+    secd_register_prim(registry, "%usb-hid-keyboard-add", prim_usb_hid_add);
     secd_register_prim(registry, "%serial-write", prim_serial_write);
     secd_register_prim(registry, "%serial-read", prim_serial_read);
     secd_register_prim(registry, "%serial-avail", prim_serial_avail);
@@ -536,7 +536,7 @@ void secd_register_builtins(secd_prim_registry_t *registry) {
 #if SECD_FEATURE_HID
     secd_register_prim(registry, "%hid-mouse", prim_hid_mouse);
     /* Must be sorted by name for lookups and appears after %hid-mouse;
-       ids on S3: %usb-mouse-add = 40, %hid-mouse = 39. */
-    secd_register_prim(registry, "%usb-mouse-add", prim_usb_mouse_add);
+       ids on S3: %usb-hid-mouse-add = 40, %hid-mouse = 39. */
+    secd_register_prim(registry, "%usb-hid-mouse-add", prim_usb_mouse_add);
 #endif
 }
