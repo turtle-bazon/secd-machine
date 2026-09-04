@@ -7,6 +7,7 @@
  *     %usb-init          -> secd_usb_init():      register descriptor + console
  *     %usb-serial-add    -> secd_usb_serial_add():add a CDC-ACM serial port
  *     %usb-hid-add       -> secd_usb_hid_add():   add the HID keyboard
+ *     %usb-mouse-add     -> secd_usb_mouse_add(): add the HID mouse
  *     %usb-start         -> secd_usb_start():     freeze + enumerate
  *
  * The CDC-ACM console (SECD print/format, port 0) is always present. Up to
@@ -39,11 +40,17 @@ extern "C" {
 #define HID_EP_INTERVAL 1
 #define HID_KEYBOARD_REPORT_DESC_SIZE 63
 
+/* Mouse HID: 4-byte report (buttons, dx, dy, wheel) on EP0x8E (free). */
+#define HID_MOUSE_EP_SIZE     4
+#define HID_MOUSE_EP_INTERVAL 1
+#define HID_MOUSE_REPORT_DESC_SIZE 74
+
 #define RING_SIZE 256
 #define CDC_RX_BUF     64
 
-/* Reserved HID IN endpoint; CDC data IN use odd 0x8x, notif even 0x8x. */
-#define HID_EP 0x8F
+/* HID IN endpoints: keyboard 0x8F, mouse 0x8E (CDCs use 0x01-0x8B). */
+#define HID_EP        0x8F
+#define HID_MOUSE_EP  0x8E
 
 static const uint8_t cdc_ep_out[SECD_USB_MAX_PORTS] = {0x01, 0x03, 0x05, 0x07, 0x09, 0x0B};
 static const uint8_t cdc_ep_in[SECD_USB_MAX_PORTS]  = {0x81, 0x83, 0x85, 0x87, 0x89, 0x8B};
@@ -61,12 +68,13 @@ struct cdc_port {
 };
 
 static struct cdc_port cdc[SECD_USB_MAX_PORTS];
-static struct usbd_interface  intfs[2 * SECD_USB_MAX_PORTS + 1];
+static struct usbd_interface  intfs[2 * SECD_USB_MAX_PORTS + 2];
 static struct usbd_endpoint   ep_out[SECD_USB_MAX_PORTS], ep_in[SECD_USB_MAX_PORTS];
-static struct usbd_endpoint   hid_ep;
+static struct usbd_endpoint   hid_ep, hid_mouse_ep;
 
 static volatile uint8_t s_ports = 1;      /* count of used CDC ports (0 = console) */
 static volatile bool    s_hid = false;
+static volatile bool    s_mouse = false;
 static volatile bool    s_started = false;
 
 /* ---------------------------------------------------------------- descriptors */
@@ -97,6 +105,24 @@ static const uint8_t hid_kbd_desc[HID_KEYBOARD_DESCRIPTOR_LEN] = {
     HID_KEYBOARD_DESCRIPTOR_INIT(0, 0x01, HID_KEYBOARD_REPORT_DESC_SIZE,
                                  HID_EP, HID_EP_SIZE, HID_EP_INTERVAL)};
 
+/* CherryUSB boot-mouse report descriptor: 3 buttons + 5 pad, then signed
+ * X/Y/wheel (relative); report byte layout [buttons dx dy wheel]. */
+static const uint8_t hid_mouse_report_desc[HID_MOUSE_REPORT_DESC_SIZE] = {
+    0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x09, 0x01,   /* App collection (Mouse) */
+    0xA1, 0x00, 0x05, 0x09, 0x19, 0x01, 0x29, 0x03,   /* Physical: buttons 1-3   */
+    0x15, 0x00, 0x25, 0x01, 0x95, 0x03, 0x75, 0x01,
+    0x81, 0x02, 0x95, 0x01, 0x75, 0x05, 0x81, 0x01,   /* 5-bit pad              */
+    0x05, 0x01, 0x09, 0x30, 0x09, 0x31, 0x09, 0x38,   /* X, Y, wheel            */
+    0x15, 0x81, 0x25, 0x7F, 0x75, 0x08, 0x95, 0x03,
+    0x81, 0x06, 0xC0, 0x09, 0x3c, 0x05, 0xff, 0x09,   /* vendor collection (pan)*/
+    0x01, 0x15, 0x00, 0x25, 0x01, 0x75, 0x01, 0x95,
+    0x02, 0xb1, 0x22, 0x75, 0x06, 0x95, 0x01, 0xb1,
+    0x01, 0xc0};
+
+static const uint8_t hid_mouse_desc[HID_MOUSE_DESCRIPTOR_LEN] = {
+    HID_MOUSE_DESCRIPTOR_INIT(0, 0x01, HID_MOUSE_REPORT_DESC_SIZE,
+                              HID_MOUSE_EP, HID_MOUSE_EP_SIZE, HID_MOUSE_EP_INTERVAL)};
+
 static const char *string_descriptors[] = {
     (const char[]){0x09, 0x04}, /* LangID */
     "SECD",                     /* Manufacturer */
@@ -105,15 +131,18 @@ static const char *string_descriptors[] = {
 };
 
 static uint8_t config_buf[9 + CDC_ACM_DESCRIPTOR_LEN * SECD_USB_MAX_PORTS +
-                          HID_KEYBOARD_DESCRIPTOR_LEN];
+                          HID_KEYBOARD_DESCRIPTOR_LEN +
+                          HID_MOUSE_DESCRIPTOR_LEN];
 
 /* ------------------------------------------------------------- config build */
 static uint16_t build_config_descriptor(void)
 {
     uint8_t *p = config_buf;
     uint8_t n = (uint8_t)s_ports;              /* used CDC ports */
-    uint16_t total = 9 + CDC_ACM_DESCRIPTOR_LEN * n + (s_hid ? 25 : 0);
-    uint8_t ifaces = (uint8_t)(2 * n + (s_hid ? 1 : 0));
+    uint16_t total = 9 + CDC_ACM_DESCRIPTOR_LEN * n +
+                     (s_hid ? (uint16_t)HID_KEYBOARD_DESCRIPTOR_LEN : 0) +
+                     (s_mouse ? (uint16_t)HID_MOUSE_DESCRIPTOR_LEN : 0);
+    uint8_t ifaces = (uint8_t)(2 * n + (s_hid ? 1 : 0) + (s_mouse ? 1 : 0));
 
     *p++ = 9;                 /* bLength */
     *p++ = 0x02;              /* bDescriptorType: CONFIGURATION */
@@ -130,8 +159,13 @@ static uint16_t build_config_descriptor(void)
     }
     if (s_hid) {
         memcpy(p, hid_kbd_desc, sizeof(hid_kbd_desc));
-        p[2] = (uint8_t)(2 * n);   /* HID interface number follows the ACMs */
+        p[2] = (uint8_t)(2 * n);   /* HID keyboard interface follows the ACMs */
         p += sizeof(hid_kbd_desc);
+    }
+    if (s_mouse) {
+        memcpy(p, hid_mouse_desc, sizeof(hid_mouse_desc));
+        p[2] = (uint8_t)(2 * n + (s_hid ? 1 : 0));  /* mouse after keyboard */
+        p += sizeof(hid_mouse_desc);
     }
     return (uint8_t)(p - config_buf);
 }
@@ -205,6 +239,14 @@ static void hid_ep_send(const uint8_t *buf)
     while (hid_tx_busy) { /* hid_in_cb completes the transfer */ }
 }
 
+static volatile bool hid_mouse_tx_busy = false;
+
+static void hid_mouse_in_cb(uint8_t busid, uint8_t ep, uint32_t nbytes)
+{
+    (void)busid; (void)ep; (void)nbytes;
+    hid_mouse_tx_busy = false;
+}
+
 static void secd_usbd_event(uint8_t busid, uint8_t event)
 {
     switch (event) {
@@ -271,19 +313,32 @@ int secd_usb_hid_add(void)
     return 0;
 }
 
-/* RP2040 has a single HID interface (the keyboard); a second HID mouse
- * interface is not supported, so the mouse add is a hard failure and the
- * mouse send is a no-op. Both exist only so the HAL glue stays uniform. */
 int secd_usb_mouse_add(void)
 {
-    (void)0;
-    return -1;
+    if (s_started || s_mouse) return -1;
+    s_mouse = true;
+    usbd_add_interface(0, usbd_hid_init_intf(0, &intfs[2 * SECD_USB_MAX_PORTS + 1],
+                                             hid_mouse_report_desc,
+                                             HID_MOUSE_REPORT_DESC_SIZE));
+    hid_mouse_ep.ep_addr = HID_MOUSE_EP;
+    hid_mouse_ep.ep_cb   = hid_mouse_in_cb;
+    usbd_add_endpoint(0, &hid_mouse_ep);
+    return 0;
 }
 
 int secd_hid_mouse_send(int8_t dx, int8_t dy, uint8_t buttons, int8_t wheel)
 {
-    (void)dx; (void)dy; (void)buttons; (void)wheel;
-    return -1;
+    static uint8_t rep[HID_MOUSE_EP_SIZE];
+    if (!s_mouse || !s_started || !usb_device_is_configured(0)) return -1;
+
+    rep[0] = buttons;
+    rep[1] = (uint8_t)dx;
+    rep[2] = (uint8_t)dy;
+    rep[3] = (uint8_t)wheel;
+    hid_mouse_tx_busy = true;
+    usbd_ep_start_write(0, HID_MOUSE_EP, rep, HID_MOUSE_EP_SIZE);
+    while (hid_mouse_tx_busy) { /* hid_mouse_in_cb completes the transfer */ }
+    return 1;
 }
 
 void secd_usb_start(void)
@@ -309,6 +364,7 @@ void secd_usb_deinit(void)
     usbd_deinitialize(0);
     s_started = false;
     s_hid = false;
+    s_mouse = false;
     s_ports = 1;
 }
 
