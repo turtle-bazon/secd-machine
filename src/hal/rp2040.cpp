@@ -142,37 +142,53 @@ int hal_serial_available(void) {
 }
 #endif
 
-/* I2C master (board feature): single bus on I2C0, pins as given. */
+/* I2C master (board feature): up to two buses (I2C0/I2C1), pins as given.
+ * %i2c-init picks the first free controller and returns its index. */
 #if SECD_FEATURE_I2C
-static i2c_inst_t *hal_i2c_bus = NULL;
+#define SECD_I2C_BUS_COUNT 2
+static i2c_inst_t *hal_i2c_bus[SECD_I2C_BUS_COUNT] = {NULL, NULL};
 
 int hal_i2c_init(uint8_t sda_pin, uint8_t scl_pin, uint32_t hz) {
-    hal_i2c_bus = i2c0;
-    i2c_init(hal_i2c_bus, hz);
+    static i2c_inst_t *const ctrl[SECD_I2C_BUS_COUNT] = {i2c0, i2c1};
+    int bus = -1;
+    for (int i = 0; i < SECD_I2C_BUS_COUNT; i++) {
+        if (!hal_i2c_bus[i]) { bus = i; break; }
+    }
+    if (bus < 0) return -1;
+    hal_i2c_bus[bus] = ctrl[bus];
+    i2c_init(hal_i2c_bus[bus], hz);
     gpio_set_function(sda_pin, GPIO_FUNC_I2C);
     gpio_set_function(scl_pin, GPIO_FUNC_I2C);
     gpio_pull_up(sda_pin);
     gpio_pull_up(scl_pin);
-    return 0;
+    return bus;
 }
 
-int hal_i2c_write(uint8_t addr, const uint8_t *data, size_t len) {
-    if (!hal_i2c_bus) return -1;
-    int rc = i2c_write_blocking(hal_i2c_bus, addr, data, len, false);
+static i2c_inst_t *bus_handle(int bus) {
+    if (bus < 0 || bus >= SECD_I2C_BUS_COUNT) return NULL;
+    return hal_i2c_bus[bus];
+}
+
+int hal_i2c_write(uint8_t bus, uint8_t addr, const uint8_t *data, size_t len) {
+    i2c_inst_t *h = bus_handle(bus);
+    if (!h) return -1;
+    int rc = i2c_write_blocking(h, addr, data, len, false);
     return (rc == (int)len) ? (int)len : -1;
 }
 
-int hal_i2c_read(uint8_t addr, uint8_t *data, size_t len) {
-    if (!hal_i2c_bus) return -1;
-    int rc = i2c_read_blocking(hal_i2c_bus, addr, data, len, false);
+int hal_i2c_read(uint8_t bus, uint8_t addr, uint8_t *data, size_t len) {
+    i2c_inst_t *h = bus_handle(bus);
+    if (!h) return -1;
+    int rc = i2c_read_blocking(h, addr, data, len, false);
     return (rc == (int)len) ? (int)len : -1;
 }
 
-int hal_i2c_write_read(uint8_t addr, const uint8_t *wdata, size_t wlen, uint8_t *rdata, size_t rlen) {
-    if (!hal_i2c_bus) return -1;
-    int rc = i2c_write_blocking(hal_i2c_bus, addr, wdata, wlen, true);
+int hal_i2c_write_read(uint8_t bus, uint8_t addr, const uint8_t *wdata, size_t wlen, uint8_t *rdata, size_t rlen) {
+    i2c_inst_t *h = bus_handle(bus);
+    if (!h) return -1;
+    int rc = i2c_write_blocking(h, addr, wdata, wlen, true);
     if (rc != (int)wlen) return -1;
-    rc = i2c_read_blocking(hal_i2c_bus, addr, rdata, rlen, false);
+    rc = i2c_read_blocking(h, addr, rdata, rlen, false);
     return (rc == (int)rlen) ? (int)rlen : -1;
 }
 #endif
