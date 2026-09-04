@@ -178,12 +178,12 @@ define RP2-CMAKE
 	@mkdir -p $(1)/cxx-shim
 	@for h in cassert cstdlib cstdint cstring cstddef cstdio; do \
 		case $$h in \
-			cassert) printf '#ifndef _CASSERT_H\n#define _CASSERT_H\n#include <assert.h>\n#endif\n' > $(1)/cxx-shim/$$h ;; \
-			cstdlib) printf '#ifndef _CSTDLIB_H\n#define _CSTDLIB_H\n#include <stdlib.h>\nnamespace std { using ::size_t; using ::malloc; using ::realloc; using ::free; using ::calloc; using ::exit; using ::abort; }\n#endif\n' > $(1)/cxx-shim/$$h ;; \
-			cstdint) printf '#ifndef _CSTDINT_H\n#define _CSTDINT_H\n#include <stdint.h>\n#endif\n' > $(1)/cxx-shim/$$h ;; \
-			cstring) printf '#ifndef _CSTRING_H\n#define _CSTRING_H\n#include <string.h>\nnamespace std { using ::memcpy; using ::memset; using ::memcmp; using ::strlen; using ::strcmp; using ::strcpy; using ::strncpy; }\n#endif\n' > $(1)/cxx-shim/$$h ;; \
-			cstddef) printf '#ifndef _CSTDDEF_H\n#define _CSTDDEF_H\n#include <stddef.h>\nnamespace std { using ::size_t; using ::ptrdiff_t; using ::nullptr_t; }\n#endif\n' > $(1)/cxx-shim/$$h ;; \
-			cstdio) printf '#ifndef _CSTDIO_H\n#define _CSTDIO_H\n#include <stdio.h>\n#endif\n' > $(1)/cxx-shim/$$h ;; \
+			cassert) printf '#ifndef _CASSERT_H\n#define _CASSERT_H\n#include_next <assert.h>\n#endif\n' > $(1)/cxx-shim/$$h ;; \
+			cstdlib) printf '#ifndef _CSTDLIB_H\n#define _CSTDLIB_H\n#include <stddef.h>\nextern "C" {\nextern void *malloc(size_t);\nextern void *realloc(void *, size_t);\nextern void free(void *);\nextern void *calloc(size_t, size_t);\nextern void exit(int);\nextern void abort(void);\nextern int atexit(void (*)(void));\n}\nnamespace std { using ::size_t; using ::malloc; using ::realloc; using ::free; using ::calloc; using ::exit; using ::abort; using ::atexit; }\n#endif\n' > $(1)/cxx-shim/$$h ;; \
+			cstdint) printf '#ifndef _CSTDINT_H\n#define _CSTDINT_H\n#include_next <stdint.h>\n#endif\n' > $(1)/cxx-shim/$$h ;; \
+			cstring) printf '#ifndef _CSTRING_H\n#define _CSTRING_H\n#include_next <string.h>\nnamespace std { using ::memcpy; using ::memset; using ::memcmp; using ::strlen; using ::strcmp; using ::strcpy; using ::strncpy; }\n#endif\n' > $(1)/cxx-shim/$$h ;; \
+			cstddef) printf '#ifndef _CSTDDEF_H\n#define _CSTDDEF_H\n#include_next <stddef.h>\nnamespace std { using ::size_t; using ::ptrdiff_t; using ::nullptr_t; }\n#endif\n' > $(1)/cxx-shim/$$h ;; \
+			cstdio) printf '#ifndef _CSTDIO_H\n#define _CSTDIO_H\n#include_next <stdio.h>\n#endif\n' > $(1)/cxx-shim/$$h ;; \
 		esac; \
 	done
 	@cd $(1) && \
