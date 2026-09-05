@@ -123,9 +123,13 @@ int main(void) {
        independently of whether Lisp later starts USB. */
     secd_usb_init();
     secd_usb_start();
-    secd_console_write((const uint8_t *)"Waiting for host console...\n", 29);
-    while (!secd_console_ready()) {
-        sleep_ms(20);
+    SECD_INFO("Waiting for host console...\n");
+    {
+        unsigned wait_ms = 0;
+        while (!secd_console_ready() && wait_ms < 3000) {
+            sleep_ms(20);
+            wait_ms += 20;
+        }
     }
 
     SECD_INFO("SECD Machine v%s\n", SECD_MACHINE_VERSION);
