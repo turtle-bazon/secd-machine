@@ -140,13 +140,10 @@ alignas(4) static uint8_t device_descriptor[18] = {
 };
 
 /* USB string descriptors are UTF-16LE, prefixed by a 2-byte length+type
- * header (bLength, bDescriptorType=0x03). We pack them lazily the first time
- * the host asks for them, then cache the result. 64 bytes covers a 31-char
- * string (header 2 + 62 UTF-16LE bytes). */
-static uint8_t  string_buf[4][64];
-static uint8_t  string_len[4] = {0, 0, 0, 0};
-static bool     string_built = false;
-
+ * CherryUSB calls strlen() on these and converts to UTF-16LE
+ * internally (usbd_core.c:247).  Must be plain ASCII, not raw
+ * UTF-16LE — strlen() would stop at the first 0x00 high-byte. */
+static char     string_buf[4][64];
 static const char *string_descriptors[4] = {NULL, NULL, NULL, NULL};
 static const char *string_descriptor_cb(uint8_t speed, uint8_t index);
 
@@ -188,17 +185,13 @@ static const uint8_t hid_mouse_desc[HID_MOUSE_DESCRIPTOR_LEN] = {
                               HID_MOUSE_EP, HID_MOUSE_EP_SIZE, HID_MOUSE_EP_INTERVAL)};
 
 /* ----------------------------------------------------- USB string packing */
-/* Pack a C string into a USB string descriptor (UTF-16LE, 2-byte length
- * header). Truncates to fit in 62 bytes of payload (31 chars). Updates
- * string_buf[i] / string_len[i] and points string_descriptors[i] at it. */
+/* Pack a plain ASCII C-string. CherryUSB converts to UTF-16LE. */
 static void pack_string(uint8_t i, const char *s)
 {
     size_t n = strnlen(s, SECD_USB_STR_MAX);
-    uint8_t hdr[2] = { (uint8_t)(2 + n * 2), 0x03 };
-    memcpy(string_buf[i], hdr, 2);
-    for (size_t k = 0; k < n; k++) string_buf[i][2 + k * 2] = (uint8_t)s[k];
-    string_len[i] = (uint8_t)(2 + n * 2);
-    string_descriptors[i] = (const char *)string_buf[i];
+    memcpy(string_buf[i], s, n);
+    string_buf[i][n] = '\0';
+    string_descriptors[i] = string_buf[i];
 }
 
 static void build_strings(void)
@@ -207,7 +200,6 @@ static void build_strings(void)
     pack_string(1, s_usb_manufacturer);
     pack_string(2, s_usb_product);
     pack_string(3, s_usb_serial);
-    string_built = true;
 }
 
 /* DMA-aligned: the DWC2 glue copies from/to DRAM and requires data buffers to

@@ -140,20 +140,18 @@ static const uint8_t hid_mouse_desc[HID_MOUSE_DESCRIPTOR_LEN] = {
     HID_MOUSE_DESCRIPTOR_INIT(0, 0x01, HID_MOUSE_REPORT_DESC_SIZE,
                               HID_MOUSE_EP, HID_MOUSE_EP_SIZE, HID_MOUSE_EP_INTERVAL)};
 
-/* USB string descriptors are UTF-16LE, prefixed by a 2-byte length+type
- * header. Packed lazily the first time secd_usb_start runs; 64 bytes per
- * string covers a 31-char payload. */
-static uint8_t  string_buf[4][64];
-static uint8_t  string_len[4] = {0, 0, 0, 0};
+/* CherryUSB calls strlen() on these and converts to UTF-16LE
+ * internally (usbd_core.c:247).  Must be plain ASCII, not raw
+ * UTF-16LE — strlen() would stop at the first 0x00 high-byte. */
+static char     string_buf[4][64];
 static const char *string_descriptors[4] = {NULL, NULL, NULL, NULL};
 
 static void pack_string(uint8_t i, const char *s)
 {
     size_t n = strnlen(s, SECD_USB_STR_MAX);
-    uint8_t hdr[2] = { (uint8_t)(2 + n * 2), 0x03 };
-    memcpy(string_buf[i], hdr, 2);
-    for (size_t k = 0; k < n; k++) string_buf[i][2 + k * 2] = (uint8_t)s[k];
-    string_descriptors[i] = (const char *)string_buf[i];
+    memcpy(string_buf[i], s, n);
+    string_buf[i][n] = '\0';
+    string_descriptors[i] = string_buf[i];
 }
 
 static void build_strings(void)
